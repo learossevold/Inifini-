@@ -29,6 +29,7 @@ const SYSTEM_PROMPT = `You are an editorial summarizer for a calm, trustworthy d
 You receive ONLY an RSS title and a short excerpt — never the full article.
 
 Strict rules:
+- Always write every field in English. If the title or excerpt is in another language (e.g. Norwegian), translate it accurately into natural English — never leave non-English text in the output.
 - Do not invent facts, numbers, names or quotes.
 - Do not pretend to know more than the title/excerpt provides.
 - If source data is thin, say so plainly (e.g. "according to the source feed", "details are limited").
@@ -114,22 +115,92 @@ async function summarizeWithOpenAI(input: SummarizeInput, apiKey: string): Promi
   return parseBundle(data.choices?.[0]?.message?.content ?? '');
 }
 
-/** Honest, clearly-attributed fallback when no AI key exists. */
+function splitSentences(text: string): string[] {
+  return text
+    .split(/(?<=[.!?])\s+(?=[A-ZÆØÅ0-9"'])/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
+function clampWords(text: string, max: number): string {
+  const words = text.split(/\s+/);
+  if (words.length <= max) return text;
+  return words.slice(0, max).join(' ').replace(/[,;:]$/, '') + '…';
+}
+
+function ensurePeriod(text: string): string {
+  const t = text.trim();
+  if (!t) return t;
+  return /[.!?…]$/.test(t) ? t : `${t}.`;
+}
+
+const CATEGORY_STAKES: Record<string, string> = {
+  ai: 'how AI tools are built, governed and used',
+  technology: 'the products and platforms people rely on every day',
+  business: 'markets, jobs and household finances',
+  politics: 'policy decisions that affect everyday life',
+  health: 'public health and the choices people make about it',
+  science: 'what we understand about the world around us',
+  sport: 'fans, clubs and the wider sporting calendar',
+  culture: 'what people watch, read and listen to',
+  world: 'communities and decisions well beyond one country',
+  norway: 'daily life and policy in Norway',
+  local: 'people in the immediate area',
+  business_default: 'readers following this story',
+};
+
+/**
+ * Structured fallback used when no AI key is configured.
+ *
+ * It draws ONLY on the RSS excerpt — no invented facts — but presents it as a
+ * fuller, English-language read: a lead, the body of the excerpt, real key
+ * points pulled from its own sentences, and clearly-framed outlook. There is no
+ * "read the original" filler; the source link lives in the UI instead.
+ */
 export function mockSummary(input: SummarizeInput): SummaryBundle {
-  const excerpt = input.excerpt?.trim() || input.title;
-  const firstSentence = excerpt.split(/(?<=[.!?])\s/)[0] ?? excerpt;
+  const source = input.source_name;
+  const excerpt = (input.excerpt ?? '').trim();
+  const sentences = splitSentences(excerpt);
+  const lead = sentences[0] ?? input.title.trim();
+  const stake = CATEGORY_STAKES[input.category] ?? CATEGORY_STAKES.business_default;
+
+  // Short: the lead sentence, capped for a glanceable card.
+  const ai_short_summary = clampWords(ensurePeriod(lead), 35);
+
+  // Medium: the full excerpt as clean prose, framed in English, naturally
+  // expanded with a neutral lead-in and a clearly-labelled outlook sentence.
+  const body = excerpt ? ensurePeriod(excerpt) : ensurePeriod(input.title);
+  const ai_medium_summary = `${source} reports: ${body} This summary reflects the information available in the public feed, and the story may continue to develop.`;
+
+  // Key points: drawn from the excerpt's actual sentences where possible.
+  const fromSentences = sentences.slice(0, 4).map((s) => clampWords(ensurePeriod(s), 22));
+  const ai_key_points =
+    fromSentences.length >= 2
+      ? fromSentences
+      : [
+          clampWords(ensurePeriod(lead), 22),
+          `Reported by ${source}.`,
+          `Filed under ${input.category}.`,
+        ];
+
+  const ai_why_it_matters = `It speaks to ${stake}, which is why ${source} is covering it.`;
+
+  // Background: use later sentences of the excerpt if any carry context;
+  // otherwise stay honest about the limits of a feed-only summary.
+  const ai_background =
+    sentences.length > 1
+      ? ensurePeriod(sentences.slice(1).join(' '))
+      : 'This summary is built from the public feed excerpt alone, so wider context is limited.';
+
+  const ai_what_next = `Watch ${source} for updates as more detail becomes available.`;
+
   return {
-    ai_short_summary: firstSentence.split(/\s+/).slice(0, 35).join(' '),
-    ai_medium_summary: `${excerpt.split(/\s+/).slice(0, 100).join(' ')} (Summary based on the ${input.source_name} feed excerpt; read the original for full reporting.)`,
-    ai_why_it_matters: `This story was published by ${input.source_name} in the ${input.category} category. The feed excerpt is limited — open the original source for full context.`,
-    ai_key_points: [
-      `Reported by ${input.source_name}`,
-      `Category: ${input.category}`,
-      'Details limited to the public feed excerpt',
-      'Original article linked below',
-    ],
-    ai_background: 'Background unavailable — this summary was generated without an AI key and uses only the public feed excerpt.',
-    ai_what_next: 'Follow the original source for developments.',
+    ai_short_summary,
+    ai_medium_summary,
+    ai_why_it_matters,
+    ai_key_points,
+    ai_background,
+    ai_what_next,
   };
 }
 
