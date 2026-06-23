@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized. Set ADMIN_PASSWORD and send it as the x-admin-password header.' }, { status: 401 });
   }
   try {
-    const result = await runIngestion(10);
+    const result = await runIngestion(5);
     return NextResponse.json(result);
   } catch (e: any) {
     return NextResponse.json({ error: e?.message ?? 'Ingestion failed' }, { status: 500 });
