@@ -108,7 +108,7 @@ export default function Feed() {
         loading && stories.length === 0 ? (
           <div className="flex h-[calc(100vh-7.5rem)] items-center justify-center text-muted">Loading…</div>
         ) : (
-          <WatchFeed stories={stories} onComment={openStory} onShare={(s) => setShareStory(s)} onNeedMore={() => loadPage(page + 1, 'watch')} />
+          <WatchFeed stories={stories} onShare={(s) => setShareStory(s)} onNeedMore={() => loadPage(page + 1, 'watch')} />
         )
       ) : (
         /* NEWS / FOLLOWING TABS */
