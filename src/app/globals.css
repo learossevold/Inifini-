@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html { scroll-behavior: smooth; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.rule-t { border-top: 1px solid theme('colors.rule'); }
+::selection { background: theme('colors.accentSoft'); }
+
+/* Watch tab: snap each video to full viewport height */
+.snap-y-screen { scroll-snap-type: y mandatory; }
+.snap-screen { scroll-snap-align: start; scroll-snap-stop: always; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  html { scroll-behavior: auto; }
+}

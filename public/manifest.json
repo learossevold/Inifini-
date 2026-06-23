@@ -1,0 +1,12 @@
+{
+  "name": "Inifini",
+  "short_name": "Inifini",
+  "description": "A calm newspaper that never runs out.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FBFAF7",
+  "theme_color": "#FBFAF7",
+  "icons": [
+    { "src": "/logo.jpg", "sizes": "417x417", "type": "image/jpeg", "purpose": "any" }
+  ]
+}
