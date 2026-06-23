@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { FeedResponse, Story, FeedTab } from '@/lib/types';
 import { useSession } from '@/lib/session';
@@ -10,8 +10,6 @@ import WatchFeed from './WatchFeed';
 import ShareSheet from './ShareSheet';
 import Logo from './Logo';
 import { categoryLabel } from './ui';
-
-const GROUP = 3;
 
 export default function Feed() {
   const { interests } = useSession();
@@ -51,11 +49,15 @@ export default function Feed() {
     }
   }, [interests]);
 
+  const followingEmpty = tab === 'following' && interests.length === 0;
+
   useEffect(() => {
     setStories([]); setExpandedId(null);
-    loadPage(0, tab, true);
     window.scrollTo({ top: 0 });
-  }, [tab, loadPage]);
+    // Following with no interests shows a prompt instead of any (mock) stories.
+    if (tab === 'following' && interests.length === 0) { setLoading(false); return; }
+    loadPage(0, tab, true);
+  }, [tab, loadPage, interests.length]);
 
   // Infinite scroll for News/Following (Watch handles its own)
   useEffect(() => {
@@ -73,12 +75,6 @@ export default function Feed() {
     setExpandedId(s.id);
     requestAnimationFrame(() => document.getElementById(`story-${s.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   }, []);
-
-  const groups = useMemo(() => {
-    const out: Story[][] = [];
-    for (let i = 0; i < stories.length; i += GROUP) out.push(stories.slice(i, i + GROUP));
-    return out;
-  }, [stories]);
 
   const relatedFor = useCallback((s: Story) => stories.filter((x) => x.id !== s.id && (x.category === s.category || x.region === s.region)).slice(0, 3), [stories]);
 
@@ -117,6 +113,14 @@ export default function Feed() {
       ) : (
         /* NEWS / FOLLOWING TABS */
         <main className="px-4">
+          {followingEmpty ? (
+            <div className="mt-20 text-center">
+              <p className="font-serif text-2xl font-semibold">Follow topics to personalize your feed.</p>
+              <p className="mx-auto mt-3 max-w-xs text-sm text-muted">Choose the subjects you care about and stories about them will gather here.</p>
+              <Link href="/profile" className="mt-6 inline-block rounded-md bg-ink px-5 py-2.5 text-sm font-medium text-paper">Choose topics</Link>
+            </div>
+          ) : (
+          <>
           {tab === 'following' && interests.length > 0 && (
             <p className="pt-3 text-[12px] text-muted">
               Following: {interests.map(categoryLabel).join(' · ')} · <Link href="/profile" className="underline">Edit</Link>
@@ -139,26 +143,17 @@ export default function Feed() {
             </div>
           )}
 
-          {groups.map((group, gi) => (
-            <section key={gi} aria-label={`Page ${gi + 1}`}>
-              {gi > 0 && (
-                <div className="my-8 flex items-center gap-4" aria-hidden>
-                  <span className="h-px flex-1 bg-rule" /><span className="font-serif italic text-[13px] text-muted">Page {gi + 1}</span><span className="h-px flex-1 bg-rule" />
-                </div>
-              )}
-              <div className="space-y-9 pt-6">
-                {group.map((s, si) => (
-                  <div key={s.id} id={`story-${s.id}`} className="scroll-mt-28">
-                    {expandedId === s.id ? (
-                      <ArticleView story={s} related={relatedFor(s)} onClose={() => setExpandedId(null)} onOpen={openStory} onShare={(st) => setShareStory(st)} />
-                    ) : (
-                      <StoryCard story={s} lead={gi === 0 && si === 0} showDemoTag={isDev} onOpen={openStory} onComment={openStory} onShare={(st) => setShareStory(st)} />
-                    )}
-                  </div>
-                ))}
+          <div className="space-y-9 pt-6">
+            {stories.map((s, i) => (
+              <div key={s.id} id={`story-${s.id}`} className="scroll-mt-28">
+                {expandedId === s.id ? (
+                  <ArticleView story={s} related={relatedFor(s)} onClose={() => setExpandedId(null)} onOpen={openStory} onShare={(st) => setShareStory(st)} />
+                ) : (
+                  <StoryCard story={s} lead={i === 0} showDemoTag={isDev} onOpen={openStory} onComment={openStory} onShare={(st) => setShareStory(st)} />
+                )}
               </div>
-            </section>
-          ))}
+            ))}
+          </div>
 
           {loading && (
             <div className="space-y-9 pt-8" role="status" aria-label="Loading">
@@ -173,6 +168,8 @@ export default function Feed() {
 
           <div ref={sentinelRef} className="h-px" />
           {mode === 'mock' && isDev && <p className="mt-10 pb-4 text-center text-[11px] text-muted">Development mode · demo content (no database/API connected)</p>}
+          </>
+          )}
         </main>
       )}
     </div>

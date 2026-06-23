@@ -28,10 +28,12 @@ export async function getFeed(page: number, interests: Category[], onlyInterests
   const ranked = rankStories(pool, interests, onlyInterests);
 
   const start = page * PAGE_SIZE;
-  let stories = ranked.slice(start, start + PAGE_SIZE);
+  const stories = ranked.slice(start, start + PAGE_SIZE);
 
-  if (stories.length < PAGE_SIZE) {
-    const fillerPool = rankStories(real.length > 0 ? [...real, ...MOCK_STORIES] : MOCK_STORIES, interests, onlyInterests);
+  // Only pad with demo stories when there is no real data at all. In live mode
+  // we never mix fake content into a real feed (see design rules).
+  if (mode === 'mock' && stories.length < PAGE_SIZE) {
+    const fillerPool = rankStories(MOCK_STORIES, interests, onlyInterests);
     const filler = mockPage(page, fillerPool.length ? fillerPool : MOCK_STORIES);
     const seen = new Set(stories.map((s) => s.id));
     for (const f of filler) {
@@ -40,5 +42,7 @@ export async function getFeed(page: number, interests: Category[], onlyInterests
     }
   }
 
-  return { stories, breaking: page === 0 ? pickBreaking(pool) : [], page, hasMore: true, mode };
+  // In live mode the feed ends when real stories run out; mock mode cycles forever.
+  const hasMore = mode === 'mock' ? true : start + PAGE_SIZE < ranked.length;
+  return { stories, breaking: page === 0 ? pickBreaking(pool) : [], page, hasMore, mode };
 }
