@@ -44,23 +44,92 @@ const parser: Parser<unknown, RssItem> = new Parser({
 });
 
 // Static, royalty-free category fallback images (direct URLs — never an API call).
-// Used only when a feed item carries no usable image of its own.
-const CATEGORY_IMAGES: Record<Category, string> = {
-  top: 'https://images.pexels.com/photos/518543/pexels-photo-518543.jpeg?auto=compress&w=1200',
-  local: 'https://images.pexels.com/photos/1796715/pexels-photo-1796715.jpeg?auto=compress&w=1200',
-  norway: 'https://images.pexels.com/photos/1640774/pexels-photo-1640774.jpeg?auto=compress&w=1200',
-  world: 'https://images.pexels.com/photos/2990650/pexels-photo-2990650.jpeg?auto=compress&w=1200',
-  politics: 'https://images.pexels.com/photos/1056553/pexels-photo-1056553.jpeg?auto=compress&w=1200',
-  business: 'https://images.pexels.com/photos/534216/pexels-photo-534216.jpeg?auto=compress&w=1200',
-  technology: 'https://images.pexels.com/photos/2582937/pexels-photo-2582937.jpeg?auto=compress&w=1200',
-  ai: 'https://images.pexels.com/photos/8386440/pexels-photo-8386440.jpeg?auto=compress&w=1200',
-  science: 'https://images.pexels.com/photos/3894157/pexels-photo-3894157.jpeg?auto=compress&w=1200',
-  health: 'https://images.pexels.com/photos/2526878/pexels-photo-2526878.jpeg?auto=compress&w=1200',
-  culture: 'https://images.pexels.com/photos/7991579/pexels-photo-7991579.jpeg?auto=compress&w=1200',
-  sport: 'https://images.pexels.com/photos/274422/pexels-photo-274422.jpeg?auto=compress&w=1200',
-  design: 'https://images.pexels.com/photos/1809644/pexels-photo-1809644.jpeg?auto=compress&w=1200',
-  art: 'https://images.pexels.com/photos/1572386/pexels-photo-1572386.jpeg?auto=compress&w=1200',
-  travel: 'https://images.pexels.com/photos/346885/pexels-photo-346885.jpeg?auto=compress&w=1200',
+// Multiple images per category so articles in the same category don't all look
+// identical. The article title hash is used to pick deterministically.
+const CATEGORY_IMAGES: Record<Category, string[]> = {
+  top: [
+    'https://images.pexels.com/photos/518543/pexels-photo-518543.jpeg?auto=compress&w=1200',
+    'https://images.pexels.com/photos/3944454/pexels-photo-3944454.jpeg?auto=compress&w=1200',
+    'https://images.pexels.com/photos/1181671/pexels-photo-1181671.jpeg?auto=compress&w=1200',
+  ],
+  local: [
+    'https://images.pexels.com/photos/1796715/pexels-photo-1796715.jpeg?auto=compress&w=1200',
+    'https://images.pexels.com/photos/378570/pexels-photo-378570.jpeg?auto=compress&w=1200',
+    'https://images.pexels.com/photos/2422588/pexels-photo-2422588.jpeg?auto=compress&w=1200',
+  ],
+  norway: [
+    'https://images.pexels.com/photos/1640774/pexels-photo-1640774.jpeg?auto=compress&w=1200',
+    'https://images.pexels.com/photos/1434608/pexels-photo-1434608.jpeg?auto=compress&w=1200',
+    'https://images.pexels.com/photos/3601425/pexels-photo-3601425.jpeg?auto=compress&w=1200',
+    'https://images.pexels.com/photos/3225528/pexels-photo-3225528.jpeg?auto=compress&w=1200',
+  ],
+  world: [
+    'https://images.pexels.com/photos/2990650/pexels-photo-2990650.jpeg?auto=compress&w=1200',
+    'https://images.pexels.com/photos/1550337/pexels-photo-1550337.jpeg?auto=compress&w=1200',
+    'https://images.pexels.com/photos/335393/pexels-photo-335393.jpeg?auto=compress&w=1200',
+    'https://images.pexels.com/photos/6077368/pexels-photo-6077368.jpeg?auto=compress&w=1200',
+  ],
+  politics: [
+    'https://images.pexels.com/photos/1056553/pexels-photo-1056553.jpeg?auto=compress&w=1200',
+    'https://images.pexels.com/photos/3573382/pexels-photo-3573382.jpeg?auto=compress&w=1200',
+    'https://images.pexels.com/photos/5699516/pexels-photo-5699516.jpeg?auto=compress&w=1200',
+  ],
+  business: [
+    'https://images.pexels.com/photos/534216/pexels-photo-534216.jpeg?auto=compress&w=1200',
+    'https://images.pexels.com/photos/159888/pexels-photo-159888.jpeg?auto=compress&w=1200',
+    'https://images.pexels.com/photos/3183197/pexels-photo-3183197.jpeg?auto=compress&w=1200',
+    'https://images.pexels.com/photos/936137/pexels-photo-936137.jpeg?auto=compress&w=1200',
+  ],
+  technology: [
+    'https://images.pexels.com/photos/2582937/pexels-photo-2582937.jpeg?auto=compress&w=1200',
+    'https://images.pexels.com/photos/1181298/pexels-photo-1181298.jpeg?auto=compress&w=1200',
+    'https://images.pexels.com/photos/546819/pexels-photo-546819.jpeg?auto=compress&w=1200',
+    'https://images.pexels.com/photos/3861969/pexels-photo-3861969.jpeg?auto=compress&w=1200',
+  ],
+  ai: [
+    'https://images.pexels.com/photos/8386440/pexels-photo-8386440.jpeg?auto=compress&w=1200',
+    'https://images.pexels.com/photos/8438918/pexels-photo-8438918.jpeg?auto=compress&w=1200',
+    'https://images.pexels.com/photos/7567443/pexels-photo-7567443.jpeg?auto=compress&w=1200',
+  ],
+  science: [
+    'https://images.pexels.com/photos/3894157/pexels-photo-3894157.jpeg?auto=compress&w=1200',
+    'https://images.pexels.com/photos/2280571/pexels-photo-2280571.jpeg?auto=compress&w=1200',
+    'https://images.pexels.com/photos/256381/pexels-photo-256381.jpeg?auto=compress&w=1200',
+    'https://images.pexels.com/photos/1446076/pexels-photo-1446076.jpeg?auto=compress&w=1200',
+  ],
+  health: [
+    'https://images.pexels.com/photos/2526878/pexels-photo-2526878.jpeg?auto=compress&w=1200',
+    'https://images.pexels.com/photos/40751/running-runner-long-distance-fitness-40751.jpeg?auto=compress&w=1200',
+    'https://images.pexels.com/photos/3622608/pexels-photo-3622608.jpeg?auto=compress&w=1200',
+  ],
+  culture: [
+    'https://images.pexels.com/photos/7991579/pexels-photo-7991579.jpeg?auto=compress&w=1200',
+    'https://images.pexels.com/photos/1190298/pexels-photo-1190298.jpeg?auto=compress&w=1200',
+    'https://images.pexels.com/photos/33129/popcorn-movie-party-entertainment.jpg?auto=compress&w=1200',
+    'https://images.pexels.com/photos/167092/pexels-photo-167092.jpeg?auto=compress&w=1200',
+  ],
+  sport: [
+    'https://images.pexels.com/photos/274422/pexels-photo-274422.jpeg?auto=compress&w=1200',
+    'https://images.pexels.com/photos/1640777/pexels-photo-1640777.jpeg?auto=compress&w=1200',
+    'https://images.pexels.com/photos/248547/pexels-photo-248547.jpeg?auto=compress&w=1200',
+    'https://images.pexels.com/photos/46798/the-ball-stadion-football-the-pitch-46798.jpeg?auto=compress&w=1200',
+  ],
+  design: [
+    'https://images.pexels.com/photos/1809644/pexels-photo-1809644.jpeg?auto=compress&w=1200',
+    'https://images.pexels.com/photos/196644/pexels-photo-196644.jpeg?auto=compress&w=1200',
+    'https://images.pexels.com/photos/326501/pexels-photo-326501.jpeg?auto=compress&w=1200',
+  ],
+  art: [
+    'https://images.pexels.com/photos/1572386/pexels-photo-1572386.jpeg?auto=compress&w=1200',
+    'https://images.pexels.com/photos/20967/pexels-photo.jpg?auto=compress&w=1200',
+    'https://images.pexels.com/photos/1266808/pexels-photo-1266808.jpeg?auto=compress&w=1200',
+  ],
+  travel: [
+    'https://images.pexels.com/photos/346885/pexels-photo-346885.jpeg?auto=compress&w=1200',
+    'https://images.pexels.com/photos/1051073/pexels-photo-1051073.jpeg?auto=compress&w=1200',
+    'https://images.pexels.com/photos/1008155/pexels-photo-1008155.jpeg?auto=compress&w=1200',
+    'https://images.pexels.com/photos/2325446/pexels-photo-2325446.jpeg?auto=compress&w=1200',
+  ],
 };
 
 function slugify(t: string): string {
@@ -137,8 +206,15 @@ function looksLikeImage(url: string | undefined, type?: string): url is string {
   return /\.(jpe?g|png|webp|gif|avif)(\?|$)/i.test(url);
 }
 
+function pickFallback(category: Category, title: string): string {
+  const pool = CATEGORY_IMAGES[category] ?? CATEGORY_IMAGES.world;
+  return pool[Math.abs(hash(title)) % pool.length];
+}
+
 /** Pick the best available image for a feed item, falling back per category. */
 function extractImage(item: RssItem, category: Category): string {
+  const title = item.title ?? '';
+
   // 1. Standard <enclosure> image
   if (looksLikeImage(item.enclosure?.url, item.enclosure?.type)) return item.enclosure!.url!;
 
@@ -158,8 +234,9 @@ function extractImage(item: RssItem, category: Category): string {
   const match = html.match(/<img[^>]+src=["']([^"']+)["']/i);
   if (match && /^https?:\/\//.test(match[1])) return match[1];
 
-  // 5. Static per-category fallback — always returns something.
-  return CATEGORY_IMAGES[category] ?? CATEGORY_IMAGES.world;
+  // 5. Per-category fallback pool — picked deterministically by title hash
+  //    so different articles get different images even in the same category.
+  return pickFallback(category, title);
 }
 
 export interface IngestResult {

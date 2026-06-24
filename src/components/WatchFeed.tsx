@@ -132,9 +132,6 @@ function WatchArticle({
           <div className="absolute inset-0 bg-gradient-to-br from-[#2a2622] to-night" aria-hidden />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-night/80 via-transparent to-night/30" aria-hidden />
-        <span className="absolute left-1/2 top-3 -translate-x-1/2 rounded-full bg-black/45 px-3 py-1 text-[11px] font-medium text-white/90 backdrop-blur-sm">
-          ▲ Tap image to close
-        </span>
       </button>
 
       <div className="px-5 pb-20 pt-5">
