@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { supabaseAdmin } from '@/lib/supabase';
 import { summarizeStory } from '@/lib/summarize';
 
 function slugify(t: string): string {
@@ -10,14 +10,10 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 async function handle(_req: NextRequest): Promise<NextResponse> {
-
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) {
-    return NextResponse.json({ error: 'Supabase service role key not configured' }, { status: 500 });
+  const db = supabaseAdmin();
+  if (!db) {
+    return NextResponse.json({ error: 'Supabase not configured' }, { status: 500 });
   }
-
-  const db = createClient(url, key);
 
   // Fetch recent published articles, then filter in JS for short summaries
   const { data: articles, error } = await db
@@ -63,7 +59,7 @@ async function handle(_req: NextRequest): Promise<NextResponse> {
       }
       const { error: upErr } = await db.from('stories').update(patch).eq('id', article.id);
       if (upErr) { failed++; } else { updated++; }
-      void engine; // used for logging only
+      void engine;
     } catch {
       failed++;
     }
