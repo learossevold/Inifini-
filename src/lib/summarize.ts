@@ -42,12 +42,12 @@ Strict rules:
 Respond ONLY with valid JSON, no markdown fences, in this exact shape:
 {
   "ai_title": "English title (only include this field if the original title is not in English)",
-  "ai_short_summary": "max 35 words",
-  "ai_medium_summary": "max 120 words",
-  "ai_why_it_matters": "1–2 sentences for a normal reader",
-  "ai_key_points": ["3 to 5 short bullets"],
-  "ai_background": "1–2 sentences of context, only what is safely general knowledge",
-  "ai_what_next": "1–2 cautious sentences on what may happen next"
+  "ai_short_summary": "One punchy sentence, max 40 words — used as the card teaser",
+  "ai_medium_summary": "Full summary paragraph, 150–250 words. Use all the information from the excerpt. Write in clear, flowing prose — not bullet points. Expand naturally on what is known, flag what is uncertain, and give the reader a complete picture of the story from the excerpt alone.",
+  "ai_why_it_matters": "2–3 sentences explaining the real-world significance for an everyday reader",
+  "ai_key_points": ["5 specific, informative bullets drawn directly from the excerpt — each at least 10 words"],
+  "ai_background": "2–3 sentences of relevant context that a reader unfamiliar with the topic would benefit from knowing. Use only safely general knowledge.",
+  "ai_what_next": "2–3 cautious sentences on what may plausibly happen next, clearly framed as outlook not prediction"
 }`;
 
 function userPrompt(input: SummarizeInput): string {
@@ -89,7 +89,7 @@ async function summarizeWithAnthropic(input: SummarizeInput, apiKey: string): Pr
     },
     body: JSON.stringify({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 800,
+      max_tokens: 1800,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userPrompt(input) }],
     }),
@@ -106,7 +106,7 @@ async function summarizeWithOpenAI(input: SummarizeInput, apiKey: string): Promi
     headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({
       model: 'gpt-4o-mini',
-      max_tokens: 800,
+      max_tokens: 1800,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: userPrompt(input) },
