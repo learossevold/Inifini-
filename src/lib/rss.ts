@@ -212,9 +212,8 @@ function pickFallback(category: Category, title: string): string {
 }
 
 /** Pick the best available image for a feed item, falling back per category. */
-function extractImage(item: RssItem, category: Category): string {
-  const title = item.title ?? '';
-
+/** Returns the RSS image url, or null if none found (caller handles fallback). */
+function extractRssImage(item: RssItem): string | null {
   // 1. Standard <enclosure> image
   if (looksLikeImage(item.enclosure?.url, item.enclosure?.type)) return item.enclosure!.url!;
 
@@ -234,9 +233,29 @@ function extractImage(item: RssItem, category: Category): string {
   const match = html.match(/<img[^>]+src=["']([^"']+)["']/i);
   if (match && /^https?:\/\//.test(match[1])) return match[1];
 
-  // 5. Per-category fallback pool — picked deterministically by title hash
-  //    so different articles get different images even in the same category.
-  return pickFallback(category, title);
+  return null;
+}
+
+/**
+ * Search Unsplash for a landscape photo relevant to the article title.
+ * Returns the `regular` URL (1080px wide) or null on any failure.
+ * Hard timeout of 3 s so it never stalls the ingestion loop.
+ */
+async function unsplashImage(title: string, apiKey: string): Promise<string | null> {
+  try {
+    // Use the first 5 words as the search query for relevance without noise.
+    const query = encodeURIComponent(title.split(/\s+/).slice(0, 5).join(' '));
+    const url = `https://api.unsplash.com/photos/random?query=${query}&orientation=landscape&client_id=${apiKey}`;
+    const res = await Promise.race([
+      fetch(url),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('unsplash timeout')), 3_000)),
+    ]);
+    if (!res.ok) return null;
+    const data = await res.json() as { urls?: { regular?: string } };
+    return data?.urls?.regular ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export interface IngestResult {
@@ -254,6 +273,7 @@ interface Candidate {
   sourceName: string;
   row: Partial<Story>;
   summaryInput: Parameters<typeof summarizeStory>[0];
+  needsImage: boolean; // true = no RSS image found, try Unsplash
 }
 
 /** Fetch one feed with a hard timeout so a hanging host can't blow the budget. */
@@ -305,10 +325,12 @@ export async function runIngestion(maxPerSource = 5): Promise<IngestResult> {
       const publishedAt = item.isoDate ?? item.pubDate ?? new Date().toISOString();
       const category = inferCategory(rawTitle, excerpt, source.category);
       const importance = inferImportance(rawTitle, source.trust_level);
-      const image = extractImage(item, category);
+      const rssImage = extractRssImage(item);
+      const image = rssImage ?? pickFallback(category, rawTitle);
 
       candidates.push({
         sourceName: source.name,
+        needsImage: rssImage === null,
         summaryInput: {
           title: markedTitle,
           excerpt,
@@ -368,12 +390,23 @@ export async function runIngestion(maxPerSource = 5): Promise<IngestResult> {
     return true;
   });
 
-  // ── 4. Summarize fresh items in parallel (mock is instant; AI runs concurrently). ──
-  const summaries = await Promise.all(fresh.map((c) => summarizeStory(c.summaryInput)));
+  // ── 4. Summarize + Unsplash image lookup in parallel. ─────────────────────
+  const unsplashKey = process.env.UNSPLASH_ACCESS_KEY;
+  const [summaries, unsplashImages] = await Promise.all([
+    Promise.all(fresh.map((c) => summarizeStory(c.summaryInput))),
+    Promise.all(fresh.map((c) =>
+      c.needsImage && unsplashKey
+        ? unsplashImage(c.summaryInput.title, unsplashKey)
+        : Promise.resolve(null)
+    )),
+  ]);
+
   const rows = fresh.map((c, i) => {
     const { ai_title, ...bundle } = summaries[i].bundle;
     return {
       ...c.row,
+      // Use Unsplash image if we got one, otherwise keep the Pexels fallback.
+      ...(unsplashImages[i] ? { image_url: unsplashImages[i] } : {}),
       ...bundle,
       // Use the AI-translated English title when available; otherwise keep the original.
       ...(ai_title ? { title: ai_title, slug: slugify(ai_title) } : {}),
