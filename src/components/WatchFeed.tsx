@@ -9,45 +9,73 @@ import Comments from './Comments';
 import { useSession } from '@/lib/session';
 
 function CommentSheet({ story, onClose }: { story: Story; onClose: () => void }) {
-  const { addComment } = useSession();
+  const { addComment, commentsByStory } = useSession();
   const [text, setText] = useState('');
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  useEffect(() => {
-    setTimeout(() => textareaRef.current?.focus(), 80);
-  }, []);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const comments = commentsByStory[story.id] ?? [];
 
   const submit = () => {
     const trimmed = text.trim();
     if (!trimmed) return;
     addComment(story.id, trimmed, null);
     setText('');
-    onClose();
+    inputRef.current?.focus();
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-end" onClick={onClose}>
-      {/* backdrop */}
-      <div className="absolute inset-0 bg-black/60" />
-      {/* sheet */}
-      <div className="relative bg-[#1a1a1a] rounded-t-2xl px-4 pt-4 pb-8" onClick={(e) => e.stopPropagation()}>
-        <div className="mb-3 flex items-center justify-between">
-          <span className="font-sans text-[13px] font-semibold uppercase tracking-widest text-white/60">Add a comment</span>
-          <button onClick={onClose} className="text-white/50 text-xl leading-none">✕</button>
+    <div className="fixed inset-0 z-50 flex flex-col justify-end" role="dialog" aria-modal="true">
+      {/* semi-transparent backdrop — tap to close */}
+      <button className="absolute inset-0 bg-black/40" onClick={onClose} aria-label="Close comments" />
+
+      {/* sheet — 65 vh, dark, rounded top */}
+      <div className="relative flex h-[65vh] flex-col rounded-t-2xl bg-[#181818] shadow-2xl animate-fadeUp">
+        {/* drag handle */}
+        <div className="flex justify-center pt-3 pb-1">
+          <div className="h-1 w-10 rounded-full bg-white/20" />
         </div>
-        <textarea
-          ref={textareaRef}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          rows={3}
-          placeholder="Write something…"
-          className="w-full resize-none rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-[15px] text-white placeholder:text-white/35 focus:outline-none"
-        />
-        <div className="mt-3 flex justify-end">
+
+        {/* header */}
+        <div className="flex items-center justify-between px-4 pb-3">
+          <span className="font-sans text-[13px] font-semibold text-white/70">
+            {comments.length > 0 ? `${comments.length} comment${comments.length !== 1 ? 's' : ''}` : 'Comments'}
+          </span>
+          <button onClick={onClose} className="text-white/50 text-lg leading-none">✕</button>
+        </div>
+
+        {/* comment list */}
+        <div className="flex-1 overflow-y-auto px-4 space-y-4">
+          {comments.length === 0 ? (
+            <p className="pt-8 text-center text-[14px] text-white/40">No comments yet. Be the first!</p>
+          ) : (
+            comments.map((c) => (
+              <div key={c.id} className="flex gap-3">
+                <div className="mt-0.5 h-7 w-7 shrink-0 rounded-full bg-white/15 flex items-center justify-center text-[11px] font-bold text-white">
+                  {(c.author?.display_name || c.author?.username || 'U').slice(0, 2).toUpperCase()}
+                </div>
+                <div>
+                  <p className="text-[13px] font-semibold text-white/80">{c.author?.display_name || c.author?.username}</p>
+                  <p className="text-[14px] text-white/90 leading-snug">{c.content}</p>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* input row */}
+        <div className="border-t border-white/10 px-4 py-3 flex items-center gap-3">
+          <input
+            ref={inputRef}
+            type="text"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
+            placeholder="Add a comment…"
+            className="flex-1 rounded-full border border-white/15 bg-white/8 px-4 py-2 text-[14px] text-white placeholder:text-white/35 focus:outline-none"
+          />
           <button
             onClick={submit}
             disabled={!text.trim()}
-            className="rounded-full bg-white px-6 py-2 text-[14px] font-semibold text-black disabled:opacity-40"
+            className="rounded-full bg-white px-4 py-2 text-[13px] font-semibold text-black disabled:opacity-35"
           >
             Post
           </button>
