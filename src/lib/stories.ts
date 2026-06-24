@@ -10,7 +10,7 @@ export async function getFeed(page: number, interests: Category[], onlyInterests
   let real: Story[] = [];
   if (db) {
     try {
-      const { data } = await db.from('stories').select('*').eq('status', 'published').order('published_at', { ascending: false }).limit(400);
+      const { data } = await db.from('stories').select('*').eq('status', 'published').eq('language', 'en').order('published_at', { ascending: false }).limit(400);
       real = ((data as any[]) ?? []).map((s) => ({
         like_count: 0,
         comment_count: 0,
