@@ -301,7 +301,7 @@ export async function runIngestion(maxPerSource = 5): Promise<IngestResult> {
       if (!url || !rawTitle) continue;
 
       const excerpt = stripHtml(item.contentSnippet ?? item.content ?? '').slice(0, 600);
-      const title = markTitle(rawTitle, source.language);
+      const markedTitle = markTitle(rawTitle, source.language);
       const publishedAt = item.isoDate ?? item.pubDate ?? new Date().toISOString();
       const category = inferCategory(rawTitle, excerpt, source.category);
       const importance = inferImportance(rawTitle, source.trust_level);
@@ -310,15 +310,17 @@ export async function runIngestion(maxPerSource = 5): Promise<IngestResult> {
       candidates.push({
         sourceName: source.name,
         summaryInput: {
-          title,
+          title: markedTitle,
           excerpt,
           source_name: source.name,
           source_url: url,
           category,
           published_at: publishedAt,
+          language: source.language,
         },
         row: {
-          title,
+          // ai_title (English translation) will override this if the AI returns one
+          title: markedTitle,
           slug: slugify(rawTitle),
           original_url: url,
           source_name: source.name,
@@ -368,7 +370,15 @@ export async function runIngestion(maxPerSource = 5): Promise<IngestResult> {
 
   // ── 4. Summarize fresh items in parallel (mock is instant; AI runs concurrently). ──
   const summaries = await Promise.all(fresh.map((c) => summarizeStory(c.summaryInput)));
-  const rows = fresh.map((c, i) => ({ ...c.row, ...summaries[i].bundle }));
+  const rows = fresh.map((c, i) => {
+    const { ai_title, ...bundle } = summaries[i].bundle;
+    return {
+      ...c.row,
+      ...bundle,
+      // Use the AI-translated English title when available; otherwise keep the original.
+      ...(ai_title ? { title: ai_title, slug: slugify(ai_title) } : {}),
+    };
+  });
 
   // ── 5. One batched upsert. ignoreDuplicates guards against races without
   //        failing the whole batch on a single conflict. ──────────────────────

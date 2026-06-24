@@ -8,6 +8,7 @@
  */
 
 export interface SummaryBundle {
+  ai_title?: string; // English translation of the title (only set for non-English sources)
   ai_short_summary: string;
   ai_medium_summary: string;
   ai_why_it_matters: string;
@@ -23,6 +24,7 @@ interface SummarizeInput {
   source_url: string;
   category: string;
   published_at: string;
+  language?: string; // BCP-47 language code, e.g. 'no', 'en'
 }
 
 const SYSTEM_PROMPT = `You are an editorial summarizer for a calm, trustworthy digital newspaper.
@@ -39,6 +41,7 @@ Strict rules:
 
 Respond ONLY with valid JSON, no markdown fences, in this exact shape:
 {
+  "ai_title": "English title (only include this field if the original title is not in English)",
   "ai_short_summary": "max 35 words",
   "ai_medium_summary": "max 120 words",
   "ai_why_it_matters": "1–2 sentences for a normal reader",
@@ -63,6 +66,7 @@ function parseBundle(text: string): SummaryBundle | null {
     const obj = JSON.parse(clean);
     if (!obj.ai_short_summary || !Array.isArray(obj.ai_key_points)) return null;
     return {
+      ...(obj.ai_title ? { ai_title: String(obj.ai_title) } : {}),
       ai_short_summary: String(obj.ai_short_summary),
       ai_medium_summary: String(obj.ai_medium_summary ?? ''),
       ai_why_it_matters: String(obj.ai_why_it_matters ?? ''),
