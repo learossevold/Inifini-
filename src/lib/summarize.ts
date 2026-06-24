@@ -43,11 +43,11 @@ Respond ONLY with valid JSON, no markdown fences, in this exact shape:
 {
   "ai_title": "English title (only include this field if the original title is not in English)",
   "ai_short_summary": "One punchy sentence, max 40 words — used as the card teaser",
-  "ai_medium_summary": "Rich summary of 200–300 words written as flowing prose (no bullet points). Extract and present every meaningful detail from the excerpt. Explain who did what, why it matters, what the numbers/facts say, and what is still unknown. Write as a skilled journalist summarising the story for a reader who has never heard of it.",
-  "ai_why_it_matters": "2–3 sentences explaining the real-world significance — be specific about who is affected and how",
-  "ai_key_points": ["5 specific, fact-rich bullets each 12–20 words, drawn directly from the excerpt"],
-  "ai_background": "3–4 sentences of relevant context a newcomer to the topic would need. Use only safely established general knowledge, not speculation.",
-  "ai_what_next": "2–3 cautious sentences on what may plausibly happen next, clearly framed as outlook not prediction"
+  "ai_medium_summary": "In-depth summary of 300–450 words written as rich, flowing prose (no bullet points, no headers). Use every detail from the excerpt. Explain the full story: who the key actors are, what happened, what the numbers and facts show, what led to this, what is still unclear, and why it is significant. Write the way a quality newspaper would summarise a story — informative, precise and engaging.",
+  "ai_why_it_matters": "3–4 sentences. Be specific about who is affected, how, and on what timescale. Connect to the reader's everyday life where possible.",
+  "ai_key_points": ["5 detailed, fact-rich bullets. Each bullet must be a complete sentence of at least 15 words drawn from the excerpt."],
+  "ai_background": "4–5 sentences of essential context for a reader unfamiliar with the topic. Cover relevant history, institutions or ongoing trends. Use only safely established general knowledge.",
+  "ai_what_next": "3–4 cautious sentences on what may plausibly happen next. Cover multiple possible outcomes where relevant. Clearly frame as outlook, not prediction."
 }`;
 
 function userPrompt(input: SummarizeInput): string {
@@ -89,7 +89,7 @@ async function summarizeWithAnthropic(input: SummarizeInput, apiKey: string): Pr
     },
     body: JSON.stringify({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1800,
+      max_tokens: 2500,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userPrompt(input) }],
     }),
@@ -106,7 +106,7 @@ async function summarizeWithOpenAI(input: SummarizeInput, apiKey: string): Promi
     headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({
       model: 'gpt-4o-mini',
-      max_tokens: 1800,
+      max_tokens: 2500,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: userPrompt(input) },
