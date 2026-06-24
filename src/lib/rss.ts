@@ -300,7 +300,7 @@ export async function runIngestion(maxPerSource = 5): Promise<IngestResult> {
       const rawTitle = stripHtml(item.title ?? '');
       if (!url || !rawTitle) continue;
 
-      const excerpt = stripHtml(item.contentSnippet ?? item.content ?? '').slice(0, 600);
+      const excerpt = stripHtml(item.contentSnippet ?? item.content ?? '').slice(0, 1200);
       const markedTitle = markTitle(rawTitle, source.language);
       const publishedAt = item.isoDate ?? item.pubDate ?? new Date().toISOString();
       const category = inferCategory(rawTitle, excerpt, source.category);

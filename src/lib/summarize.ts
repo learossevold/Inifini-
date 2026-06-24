@@ -43,10 +43,10 @@ Respond ONLY with valid JSON, no markdown fences, in this exact shape:
 {
   "ai_title": "English title (only include this field if the original title is not in English)",
   "ai_short_summary": "One punchy sentence, max 40 words — used as the card teaser",
-  "ai_medium_summary": "Full summary paragraph, 150–250 words. Use all the information from the excerpt. Write in clear, flowing prose — not bullet points. Expand naturally on what is known, flag what is uncertain, and give the reader a complete picture of the story from the excerpt alone.",
-  "ai_why_it_matters": "2–3 sentences explaining the real-world significance for an everyday reader",
-  "ai_key_points": ["5 specific, informative bullets drawn directly from the excerpt — each at least 10 words"],
-  "ai_background": "2–3 sentences of relevant context that a reader unfamiliar with the topic would benefit from knowing. Use only safely general knowledge.",
+  "ai_medium_summary": "Rich summary of 200–300 words written as flowing prose (no bullet points). Extract and present every meaningful detail from the excerpt. Explain who did what, why it matters, what the numbers/facts say, and what is still unknown. Write as a skilled journalist summarising the story for a reader who has never heard of it.",
+  "ai_why_it_matters": "2–3 sentences explaining the real-world significance — be specific about who is affected and how",
+  "ai_key_points": ["5 specific, fact-rich bullets each 12–20 words, drawn directly from the excerpt"],
+  "ai_background": "3–4 sentences of relevant context a newcomer to the topic would need. Use only safely established general knowledge, not speculation.",
   "ai_what_next": "2–3 cautious sentences on what may plausibly happen next, clearly framed as outlook not prediction"
 }`;
 
