@@ -18,7 +18,7 @@ async function handle(_req: NextRequest): Promise<NextResponse> {
   // Fetch recent published articles, then filter in JS for short summaries
   const { data: articles, error } = await db
     .from('stories')
-    .select('id, title, ai_medium_summary, source_name, source_url, category, published_at, language')
+    .select('id, title, ai_medium_summary, source_name, original_url, category, published_at, language')
     .eq('status', 'published')
     .order('published_at', { ascending: false })
     .limit(60);
@@ -45,7 +45,7 @@ async function handle(_req: NextRequest): Promise<NextResponse> {
         title: article.title ?? '',
         excerpt: '',
         source_name: article.source_name ?? '',
-        source_url: article.source_url ?? '',
+        source_url: article.original_url ?? '',
         category: article.category ?? 'world',
         published_at: article.published_at ?? new Date().toISOString(),
         language: article.language ?? 'en',
