@@ -6,6 +6,56 @@ import { Story } from '@/lib/types';
 import { categoryLabel, timeAgo } from './ui';
 import EngagementBar from './EngagementBar';
 import Comments from './Comments';
+import { useSession } from '@/lib/session';
+
+function CommentSheet({ story, onClose }: { story: Story; onClose: () => void }) {
+  const { addComment } = useSession();
+  const [text, setText] = useState('');
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    setTimeout(() => textareaRef.current?.focus(), 80);
+  }, []);
+
+  const submit = () => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    addComment(story.id, trimmed, null);
+    setText('');
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col justify-end" onClick={onClose}>
+      {/* backdrop */}
+      <div className="absolute inset-0 bg-black/60" />
+      {/* sheet */}
+      <div className="relative bg-[#1a1a1a] rounded-t-2xl px-4 pt-4 pb-8" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-center justify-between">
+          <span className="font-sans text-[13px] font-semibold uppercase tracking-widest text-white/60">Add a comment</span>
+          <button onClick={onClose} className="text-white/50 text-xl leading-none">✕</button>
+        </div>
+        <textarea
+          ref={textareaRef}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          rows={3}
+          placeholder="Write something…"
+          className="w-full resize-none rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-[15px] text-white placeholder:text-white/35 focus:outline-none"
+        />
+        <div className="mt-3 flex justify-end">
+          <button
+            onClick={submit}
+            disabled={!text.trim()}
+            className="rounded-full bg-white px-6 py-2 text-[14px] font-semibold text-black disabled:opacity-40"
+          >
+            Post
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /**
  * Watch tab.
@@ -114,13 +164,9 @@ function WatchArticle({
   onShare: () => void;
 }) {
   const [imgFailed, setImgFailed] = useState(false);
-  const commentsRef = useRef<HTMLDivElement>(null);
+  const [showCommentSheet, setShowCommentSheet] = useState(false);
   const date = new Date(story.published_at);
   const showImage = story.image_url && !imgFailed;
-
-  const scrollToComments = () => {
-    commentsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
 
   return (
     <article className="snap-screen min-h-[calc(100vh-7.5rem)] w-full bg-night text-white">
@@ -147,7 +193,7 @@ function WatchArticle({
         </p>
 
         <div className="mt-4">
-          <EngagementBar story={story} dark onComment={scrollToComments} onShare={onShare} />
+          <EngagementBar story={story} dark onComment={() => setShowCommentSheet(true)} onShare={onShare} />
         </div>
 
         <p className="mt-5 font-serif text-[19px] leading-relaxed text-white/95">{story.ai_medium_summary}</p>
@@ -163,9 +209,8 @@ function WatchArticle({
         <Section label="Background">{story.ai_background}</Section>
         <Section label="What may happen next">{story.ai_what_next}</Section>
 
-        <div ref={commentsRef}>
-          <Comments story={story} dark />
-        </div>
+        <Comments story={story} dark />
+        {showCommentSheet && <CommentSheet story={story} onClose={() => setShowCommentSheet(false)} />}
 
         <a href={story.original_url} target="_blank" rel="noopener noreferrer"
           className="mt-7 flex items-center justify-between rounded-md border border-white/15 bg-white/5 px-4 py-3.5 font-sans text-[14px] font-medium active:bg-white/10">
@@ -187,6 +232,7 @@ export default function WatchFeed({
 }) {
   const [activeIdx, setActiveIdx] = useState(0);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [commentStory, setCommentStory] = useState<Story | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const scrollItemToTop = useCallback((id: string) => {
@@ -226,22 +272,25 @@ export default function WatchFeed({
   }, [stories.length, onNeedMore]);
 
   return (
-    <div ref={containerRef} className="snap-y-screen h-[calc(100vh-7.5rem)] overflow-y-auto no-scrollbar">
-      {stories.map((s, i) => (
-        <div key={s.id} id={`watch-item-${s.id}`} data-watch-card data-idx={i} className="relative">
-          {openId === s.id ? (
-            <WatchArticle story={s} onClose={() => close(s)} onShare={() => onShare(s)} />
-          ) : (
-            <>
-              <WatchCard story={s} active={i === activeIdx} onOpen={() => open(s)} />
-              {/* Right-side vertical engagement rail (sits above the tap-to-open card) */}
-              <div className="absolute bottom-32 right-3 z-10">
-                <EngagementBar story={s} vertical dark onComment={() => open(s)} onShare={() => onShare(s)} />
-              </div>
-            </>
-          )}
-        </div>
-      ))}
-    </div>
+    <>
+      <div ref={containerRef} className="snap-y-screen h-[calc(100vh-7.5rem)] overflow-y-auto no-scrollbar">
+        {stories.map((s, i) => (
+          <div key={s.id} id={`watch-item-${s.id}`} data-watch-card data-idx={i} className="relative">
+            {openId === s.id ? (
+              <WatchArticle story={s} onClose={() => close(s)} onShare={() => onShare(s)} />
+            ) : (
+              <>
+                <WatchCard story={s} active={i === activeIdx} onOpen={() => open(s)} />
+                {/* Right-side vertical engagement rail */}
+                <div className="absolute bottom-32 right-3 z-10">
+                  <EngagementBar story={s} vertical dark onComment={() => setCommentStory(s)} onShare={() => onShare(s)} />
+                </div>
+              </>
+            )}
+          </div>
+        ))}
+      </div>
+      {commentStory && <CommentSheet story={commentStory} onClose={() => setCommentStory(null)} />}
+    </>
   );
 }
