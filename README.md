@@ -40,6 +40,7 @@ Copy `.env.example` to `.env.local` and fill in what you have:
 | `SUPABASE_SERVICE_ROLE_KEY` | optional | Server-only write key for ingestion. |
 | `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` | optional | Real AI summaries. Checked Anthropic-first. |
 | `OPENAI_API_KEY_TTS` | optional | Powers Watch-tab AI narration audio. Without it, Watch uses silent caption cards. Needs a Supabase Storage bucket, which `/api/ingest/narrate` creates automatically on first run. |
+| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_CONTACT_EMAIL` | optional | The daily morning-brief push notification. Generate a pair with `npx web-push generate-vapid-keys`. Without them the toggle stays hidden and nothing is sent. |
 
 ## 5. Set up Supabase
 
@@ -64,6 +65,8 @@ Push to GitHub → import at vercel.com/new → add the environment variables un
 
 **Needs improvement / next:**
 - Real-time comment updates would need Supabase subscriptions (currently loads once per story open).
+- Ranking is fixed rather than learned — it does not adapt to what a reader actually opens.
+- On iOS, push notifications only work once the app is added to the Home Screen (an Apple restriction, surfaced in the UI).
 - Watch narration currently runs once daily via cron, or on demand from `/admin` — a paid Vercel plan lets you tighten `vercel.json`'s `/api/ingest/narrate` schedule to run more often.
 
 ## 9. Test checklist (do these on a phone)

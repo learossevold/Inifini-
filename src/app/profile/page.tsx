@@ -7,6 +7,7 @@ import { useSession } from '@/lib/session';
 import { MOCK_STORIES } from '@/lib/mock-data';
 import { RSS_SOURCES } from '@/config/sources';
 import { Avatar, categoryLabel, timeAgo } from '@/components/ui';
+import NotificationToggle from '@/components/NotificationToggle';
 
 export default function ProfilePage() {
   const { me, interests, setInterests, followedSources, toggleSource, saves, friends, configured, canAct, promptSignIn, signOut } = useSession();
@@ -71,6 +72,8 @@ export default function ProfilePage() {
           </div>
         )}
       </section>
+
+      <NotificationToggle />
 
       {/* Sources */}
       <section className="mt-8">

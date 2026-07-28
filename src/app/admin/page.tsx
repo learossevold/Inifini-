@@ -25,6 +25,8 @@ export default function AdminPage() {
   const [narrateResult, setNarrateResult] = useState<string | null>(null);
   const [resumming, setResumming] = useState(false);
   const [resummarizeResult, setResummarizeResult] = useState<string | null>(null);
+  const [pushing, setPushing] = useState(false);
+  const [pushResult, setPushResult] = useState<string | null>(null);
 
   const loadStats = useCallback(async (pw: string) => {
     setError(null);
@@ -111,6 +113,24 @@ export default function AdminPage() {
     }
   };
 
+  const triggerPush = async () => {
+    setPushing(true);
+    setPushResult(null);
+    try {
+      const res = await fetch('/api/push/send', { method: 'POST', headers: { 'x-admin-password': password } });
+      const data = await res.json();
+      setPushResult(
+        res.ok
+          ? data.message ?? `Sent to ${data.sent}/${data.total} devices${data.removed ? `, ${data.removed} stale removed` : ''}. Story: ${data.story}`
+          : `Failed: ${data.error}`
+      );
+    } catch {
+      setPushResult('Send request failed.');
+    } finally {
+      setPushing(false);
+    }
+  };
+
   if (!authed) {
     return (
       <main className="mx-auto max-w-sm px-5 py-16 font-sans">
@@ -184,6 +204,15 @@ export default function AdminPage() {
             {narrating ? 'Narrating… (generating Watch audio)' : 'Generate Watch narration'}
           </button>
           {narrateResult && <p className="mt-3 rounded-md bg-accentSoft px-3 py-2">{narrateResult}</p>}
+
+          <button
+            onClick={triggerPush}
+            disabled={pushing}
+            className="mt-3 w-full rounded-md border border-ink bg-white py-3 font-medium text-ink disabled:opacity-60"
+          >
+            {pushing ? 'Sending…' : 'Send morning brief now'}
+          </button>
+          {pushResult && <p className="mt-3 rounded-md bg-accentSoft px-3 py-2">{pushResult}</p>}
 
           <h2 className="mt-8 font-serif text-lg font-bold">Source status</h2>
           <div className="mt-3 space-y-2">

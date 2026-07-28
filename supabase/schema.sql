@@ -133,6 +133,17 @@ create table if not exists shared_stories (
   read boolean not null default false
 );
 
+-- ---------- PUSH SUBSCRIPTIONS ----------
+-- One row per browser/device that opted in to notifications. `user_id` is
+-- nullable so signed-out readers can still get the morning brief.
+create table if not exists push_subscriptions (
+  endpoint text primary key,
+  user_id uuid references auth.users(id) on delete cascade,
+  p256dh text not null,
+  auth text not null,
+  created_at timestamptz not null default now()
+);
+
 -- ---------- DIRECT MESSAGES ----------
 -- 1:1 only, so a conversation is simply "every message between these two
 -- users". Storing the pair directly (rather than a participants table) keeps
@@ -191,6 +202,7 @@ alter table user_sources enable row level security;
 alter table friendships enable row level security;
 alter table shared_stories enable row level security;
 alter table messages enable row level security;
+alter table push_subscriptions enable row level security;
 alter table story_saves enable row level security;
 alter table story_likes enable row level security;
 alter table comments enable row level security;
@@ -222,6 +234,10 @@ create policy "delete own friendship" on friendships for delete using (auth.uid(
 create policy "see own shares" on shared_stories for select using (auth.uid() = from_user_id or auth.uid() = to_user_id);
 create policy "send share" on shared_stories for insert with check (auth.uid() = from_user_id);
 create policy "mark share read" on shared_stories for update using (auth.uid() = to_user_id);
+
+-- Push subscriptions: no policies on purpose. Reads and writes go through
+-- /api/push/* with the service role key, so the anon key can never enumerate
+-- or delete other people's devices.
 
 -- Direct messages: only the two people in the conversation
 drop policy if exists "read own messages" on messages;
