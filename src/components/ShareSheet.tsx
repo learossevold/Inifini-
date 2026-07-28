@@ -8,8 +8,12 @@ import { Avatar } from './ui';
 /**
  * Share sheet, TikTok-style: friends on the app first (sends the story straight
  * into their inbox as a message), then external platforms, then per-story
- * utilities. External links point at the original publisher's URL — the story
- * of record — never a fabricated Inifini link.
+ * utilities.
+ *
+ * External shares link to this story's public Inifini page (/s/<slug>), so a
+ * shared link brings the recipient into the app rather than straight out to the
+ * publisher. That page credits and links the publisher prominently, and
+ * "Original" below still opens the source directly.
  */
 
 function ChannelGlyph({ id }: { id: string }) {
@@ -49,7 +53,9 @@ export default function ShareSheet({ story, onClose }: { story: Story; onClose: 
   const [searching, setSearching] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
-  const url = story.original_url;
+  // Resolved on the client so it works on any host (localhost, preview, prod).
+  const origin = typeof window === 'undefined' ? '' : window.location.origin;
+  const url = `${origin}/s/${story.slug}`;
   const encUrl = encodeURIComponent(url);
   const encText = encodeURIComponent(story.title);
   const saved = saves.has(story.id);
@@ -93,7 +99,7 @@ export default function ShareSheet({ story, onClose }: { story: Story; onClose: 
 
   const utilities = [
     { id: 'save', label: saved ? 'Saved' : 'Save', onClick: () => { toggleSave(story.id); flash(saved ? 'Removed from saved' : 'Saved to your profile'); } },
-    { id: 'original', label: 'Original', onClick: () => openExternal(url) },
+    { id: 'original', label: 'Original', onClick: () => openExternal(story.original_url) },
     { id: 'notinterested', label: 'Not interested', onClick: () => flash('We’ll show fewer stories like this') },
     { id: 'report', label: 'Report', onClick: () => flash('Thanks — our team will take a look') },
   ];

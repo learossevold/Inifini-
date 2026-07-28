@@ -5,6 +5,37 @@ import { Category, FeedResponse, Story } from './types';
 
 const PAGE_SIZE = 9;
 
+const HYDRATE_DEFAULTS = {
+  like_count: 0,
+  comment_count: 0,
+  video_url: null,
+  video_status: 'none',
+  video_duration_seconds: null,
+  audio_url: null,
+  audio_status: 'none',
+  audio_duration_seconds: null,
+};
+
+/** One published story by slug — powers the public, shareable story page. */
+export async function getStoryBySlug(slug: string): Promise<Story | null> {
+  const db = supabasePublic();
+  if (db) {
+    try {
+      const { data } = await db.from('stories').select('*').eq('slug', slug).eq('status', 'published').maybeSingle();
+      if (data) {
+        return {
+          ...HYDRATE_DEFAULTS,
+          ...(data as any),
+          ai_key_points: Array.isArray((data as any).ai_key_points) ? (data as any).ai_key_points : [],
+        } as Story;
+      }
+    } catch {
+      /* fall through to demo content */
+    }
+  }
+  return MOCK_STORIES.find((s) => s.slug === slug) ?? null;
+}
+
 export async function getFeed(page: number, interests: Category[], onlyInterests: boolean, followedSources: string[] = []): Promise<FeedResponse> {
   const db = supabasePublic();
   let real: Story[] = [];
@@ -12,14 +43,7 @@ export async function getFeed(page: number, interests: Category[], onlyInterests
     try {
       const { data } = await db.from('stories').select('*').eq('status', 'published').not('source_domain', 'in', '("nrk.no","e24.no")').order('published_at', { ascending: false }).limit(400);
       real = ((data as any[]) ?? []).map((s) => ({
-        like_count: 0,
-        comment_count: 0,
-        video_url: null,
-        video_status: 'none',
-        video_duration_seconds: null,
-        audio_url: null,
-        audio_status: 'none',
-        audio_duration_seconds: null,
+        ...HYDRATE_DEFAULTS,
         ...s,
         ai_key_points: Array.isArray(s.ai_key_points) ? s.ai_key_points : [],
       })) as Story[];

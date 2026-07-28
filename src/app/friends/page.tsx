@@ -8,7 +8,7 @@ import { Profile } from '@/lib/types';
 import { Avatar } from '@/components/ui';
 
 export default function FriendsPage() {
-  const { friends, friendRequests, acceptFriend, declineFriend, sendFriendRequest, me, configured } = useSession();
+  const { friends, friendRequests, acceptFriend, declineFriend, sendFriendRequest, me, configured, canAct, promptSignIn } = useSession();
   const [query, setQuery] = useState('');
   const [requested, setRequested] = useState<Set<string>>(new Set());
   const [results, setResults] = useState<Profile[]>([]);
@@ -53,6 +53,18 @@ export default function FriendsPage() {
     <main className="px-5 py-6">
       <h1 className="font-serif text-2xl font-bold">Friends</h1>
       <p className="mt-1 text-[13px] text-muted">Friendships are mutual and private. No public follower counts.</p>
+
+      {!canAct && (
+        <section className="mt-5 rounded-xl border border-rule bg-accentSoft/40 px-5 py-5 text-center">
+          <p className="text-[14px] text-muted">Create an account to add friends and send them stories.</p>
+          <button
+            onClick={() => promptSignIn('Sign in to add friends.')}
+            className="mt-4 w-full rounded-lg bg-ink py-3 font-semibold text-paper"
+          >
+            Create account or sign in
+          </button>
+        </section>
+      )}
 
       {/* Add by username */}
       <div className="mt-5 flex items-center rounded-lg border border-rule bg-white px-3">

@@ -9,7 +9,7 @@ import { RSS_SOURCES } from '@/config/sources';
 import { Avatar, categoryLabel, timeAgo } from '@/components/ui';
 
 export default function ProfilePage() {
-  const { me, interests, setInterests, followedSources, toggleSource, saves, friends, configured, signOut } = useSession();
+  const { me, interests, setInterests, followedSources, toggleSource, saves, friends, configured, canAct, promptSignIn, signOut } = useSession();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Category[]>(interests);
   const [editingSources, setEditingSources] = useState(false);
@@ -20,17 +20,35 @@ export default function ProfilePage() {
 
   return (
     <main className="px-5 py-6">
-      <header className="flex items-center gap-4">
-        <Avatar name={me?.display_name || me?.username || 'You'} size={64} />
-        <div>
-          <h1 className="font-serif text-2xl font-bold leading-tight">{me?.display_name || me?.username}</h1>
-          <p className="text-[14px] text-muted">@{me?.username}</p>
-        </div>
-      </header>
-      {me?.bio && <p className="mt-3 font-serif text-[16px] text-ink/85">{me.bio}</p>}
+      {canAct ? (
+        <>
+          <header className="flex items-center gap-4">
+            <Avatar name={me?.display_name || me?.username || 'You'} size={64} />
+            <div>
+              <h1 className="font-serif text-2xl font-bold leading-tight">{me?.display_name || me?.username}</h1>
+              <p className="text-[14px] text-muted">@{me?.username}</p>
+            </div>
+          </header>
+          {me?.bio && <p className="mt-3 font-serif text-[16px] text-ink/85">{me.bio}</p>}
 
-      {/* No public follower counts — private friend count only */}
-      <p className="mt-3 text-[13px] text-muted">{friends.length} friends · {saves.size} saved</p>
+          {/* No public follower counts — private friend count only */}
+          <p className="mt-3 text-[13px] text-muted">{friends.length} friends · {saves.size} saved</p>
+        </>
+      ) : (
+        /* Signed out: reading needed no account, so this is the first ask. */
+        <section className="rounded-xl border border-rule bg-accentSoft/40 px-5 py-6 text-center">
+          <h1 className="font-serif text-[22px] font-bold leading-snug">Make it yours.</h1>
+          <p className="mx-auto mt-2 max-w-xs text-[14px] text-muted">
+            Create an account to save stories, comment, add friends and send them what you&rsquo;re reading. Everything else stays open.
+          </p>
+          <button
+            onClick={() => promptSignIn('Create your account')}
+            className="mt-5 w-full rounded-lg bg-ink py-3.5 font-semibold text-paper"
+          >
+            Create account or sign in
+          </button>
+        </section>
+      )}
 
       {/* Interests */}
       <section className="mt-8">
@@ -96,9 +114,10 @@ export default function ProfilePage() {
         <Link href="/friends" className="block py-2.5">Friends &amp; requests</Link>
         <Link href="/about" className="block py-2.5">About, sources &amp; editorial note</Link>
         <Link href="/admin" className="block py-2.5">Admin</Link>
-        {configured ? (
+        {configured && canAct && (
           <button onClick={() => signOut()} className="block w-full py-2.5 text-left text-accent">Sign out</button>
-        ) : (
+        )}
+        {!configured && (
           <p className="mt-4 text-[12px] text-muted">Demo account. With Supabase connected, sign-in uses a magic link sent to your email — no password to remember.</p>
         )}
       </section>

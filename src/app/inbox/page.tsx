@@ -16,7 +16,7 @@ function preview(lastMessage: { content: string | null; story_id: string | null;
 }
 
 export default function InboxPage() {
-  const { me, conversations, friendRequests, acceptFriend, declineFriend } = useSession();
+  const { me, conversations, friendRequests, acceptFriend, declineFriend, canAct, promptSignIn } = useSession();
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
   const [showRequests, setShowRequests] = useState(false);
@@ -107,7 +107,20 @@ export default function InboxPage() {
       )}
 
       {/* Conversations */}
-      {shown.length === 0 ? (
+      {!canAct ? (
+        <div className="px-8 pt-20 text-center">
+          <p className="font-serif text-xl font-semibold">Your inbox lives here.</p>
+          <p className="mx-auto mt-2 max-w-xs text-[14px] text-muted">
+            Create an account to message friends and send them stories you&rsquo;re reading.
+          </p>
+          <button
+            onClick={() => promptSignIn('Sign in to message your friends.')}
+            className="mt-5 rounded-md bg-ink px-5 py-2.5 text-sm font-medium text-paper"
+          >
+            Create account or sign in
+          </button>
+        </div>
+      ) : shown.length === 0 ? (
         <div className="px-8 pt-20 text-center">
           <p className="font-serif text-xl font-semibold">
             {conversations.length === 0 ? 'No messages yet.' : 'No conversations match that name.'}

@@ -38,6 +38,12 @@ interface SessionState {
 interface SessionAPI extends SessionState {
   configured: boolean;
   status: AuthStatus;
+  /** True when actions that need an identity (comment, like, message) are allowed. */
+  canAct: boolean;
+  /** Set when a signed-out reader tried a gated action — show the sign-in prompt. */
+  signInPrompt: string | null;
+  promptSignIn: (reason?: string) => void;
+  dismissSignInPrompt: () => void;
   unreadCount: number;
   signInWithEmail: (email: string) => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
@@ -79,6 +85,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     configured ? {} : JSON.parse(JSON.stringify(MOCK_COMMENTS))
   );
   const loadedCommentsRef = useRef<Set<string>>(new Set());
+  const [signInPrompt, setSignInPrompt] = useState<string | null>(null);
   // Demo mode keeps threads in memory so a sent message shows up in the chat.
   const mockThreadsRef = useRef<Record<string, Message[]>>(
     configured ? {} : JSON.parse(JSON.stringify(MOCK_THREADS))
@@ -137,6 +144,24 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return () => { cancelled = true; sub.subscription.unsubscribe(); };
   }, [configured]);
 
+  // Reading is always open. Anything that needs an identity — commenting,
+  // liking, saving, friends, messages — asks for sign-in at the moment it's
+  // used, rather than gating the whole app up front.
+  const canAct = !configured || Boolean(me);
+
+  const promptSignIn = useCallback((reason?: string) => {
+    setSignInPrompt(reason ?? 'Sign in to do that.');
+  }, []);
+
+  const dismissSignInPrompt = useCallback(() => setSignInPrompt(null), []);
+
+  /** Returns true (and shows the prompt) when the action should be blocked. */
+  const blocked = useCallback((reason: string): boolean => {
+    if (canAct) return false;
+    setSignInPrompt(reason);
+    return true;
+  }, [canAct]);
+
   const signInWithEmail = useCallback(async (email: string): Promise<{ error?: string }> => {
     const db = supabaseBrowser();
     if (!db) return { error: 'Not configured' };
@@ -185,28 +210,31 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [followedSources, me]);
 
   const toggleSave = useCallback((storyId: string) => {
+    if (blocked('Sign in to save stories and keep them across devices.')) return;
     const wasSaved = saves.has(storyId);
     const next = new Set(saves);
     wasSaved ? next.delete(storyId) : next.add(storyId);
     setSaves(next);
     const db = supabaseBrowser();
     if (db && me) social.setSaveRemote(db, me.id, storyId, !wasSaved);
-  }, [saves, me]);
+  }, [saves, me, blocked]);
 
   const toggleLike = useCallback((storyId: string) => {
+    if (blocked('Sign in to like stories.')) return;
     const wasLiked = likes.has(storyId);
     const next = new Set(likes);
     wasLiked ? next.delete(storyId) : next.add(storyId);
     setLikes(next);
     const db = supabaseBrowser();
     if (db && me) social.setLikeRemote(db, me.id, storyId, !wasLiked);
-  }, [likes, me]);
+  }, [likes, me, blocked]);
 
   const sendFriendRequest = useCallback(async (targetId: string): Promise<{ error?: string }> => {
+    if (blocked('Sign in to add friends.')) return {};
     const db = supabaseBrowser();
     if (!db || !me) return { error: 'Sign in required.' };
     return social.sendFriendRequestRemote(db, me.id, targetId);
-  }, [me]);
+  }, [me, blocked]);
 
   const acceptFriend = useCallback((id: string) => {
     setFriendRequests((reqs) => {
@@ -237,6 +265,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [friends, me]);
 
   const shareToFriend = useCallback((storyId: string, friendId: string) => {
+    if (blocked('Sign in to send stories to friends.')) return;
     const myId = me?.id ?? 'me';
     const local: Message = {
       id: `local-${Date.now()}`, sender_id: myId, recipient_id: friendId,
@@ -251,7 +280,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       mockThreadsRef.current[friendId] = [...thread, local];
     }
     bumpConversation(friendId, local);
-  }, [me, bumpConversation]);
+  }, [me, bumpConversation, blocked]);
 
   const loadThread = useCallback(async (otherId: string): Promise<Message[]> => {
     const db = supabaseBrowser();
@@ -263,6 +292,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [me]);
 
   const sendMessage = useCallback(async (otherId: string, content: string): Promise<void> => {
+    if (blocked('Sign in to send messages.')) return;
     const trimmed = content.trim();
     if (!trimmed) return;
     const myId = me?.id ?? 'me';
@@ -278,7 +308,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       mockThreadsRef.current[otherId] = [...thread, local];
     }
     bumpConversation(otherId, local);
-  }, [me, bumpConversation]);
+  }, [me, bumpConversation, blocked]);
 
   const markConversationRead = useCallback((otherId: string) => {
     setConversations((prev) => prev.map((c) => (c.user.id === otherId ? { ...c, unread: 0 } : c)));
@@ -289,6 +319,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [me]);
 
   const addComment = useCallback((storyId: string, content: string, parentId: string | null = null) => {
+    if (blocked('Sign in to join the conversation.')) return;
     const author = me ? { username: me.username, display_name: me.display_name, avatar_url: me.avatar_url } : { username: 'you', display_name: 'You', avatar_url: null };
     const newC: Comment = {
       id: `local-${Date.now()}`, story_id: storyId, user_id: me?.id ?? 'me',
@@ -303,9 +334,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     });
     const db = supabaseBrowser();
     if (db && me) social.addCommentRemote(db, me.id, storyId, content, parentId);
-  }, [me]);
+  }, [me, blocked]);
 
   const likeComment = useCallback((storyId: string, commentId: string) => {
+    if (blocked('Sign in to like comments.')) return;
     const list = commentsByStory[storyId] ?? [];
     let nextLiked = false;
     const toggle = (cs: Comment[]): Comment[] => cs.map((c) => {
@@ -318,7 +350,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setCommentsByStory((prev) => ({ ...prev, [storyId]: toggle(list) }));
     const db = supabaseBrowser();
     if (db && me) social.setCommentLikeRemote(db, me.id, commentId, nextLiked);
-  }, [commentsByStory, me]);
+  }, [commentsByStory, me, blocked]);
 
   const ensureComments = useCallback((storyId: string) => {
     const db = supabaseBrowser();
@@ -333,7 +365,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const value: SessionAPI = {
     me, onboarded, interests, followedSources, saves, likes, friends, friendRequests, conversations, commentsByStory,
-    configured, status, unreadCount,
+    configured, status, canAct, signInPrompt, promptSignIn, dismissSignInPrompt, unreadCount,
     signInWithEmail, signOut, completeOnboarding, setInterests, toggleSource, toggleSave, toggleLike,
     sendFriendRequest, acceptFriend, declineFriend, shareToFriend,
     loadThread, sendMessage, markConversationRead,
