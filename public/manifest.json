@@ -4,7 +4,7 @@
   "description": "A calm newspaper that never runs out.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0A1628",
+  "background_color": "#FCFCFD",
   "theme_color": "#FCFCFD",
   "icons": [
     { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
