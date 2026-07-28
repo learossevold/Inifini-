@@ -1,5 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import { Category, Comment, Profile, SharedStory, Story } from './types';
+import { Category, Comment, Conversation, Message, Profile, Story } from './types';
 
 /**
  * Client-side data access for the social layer (friends, comments, shares,
@@ -118,24 +118,79 @@ export async function declineFriendRemote(db: SupabaseClient, myId: string, othe
   await db.from('friendships').delete().eq('user_id_1', otherId).eq('user_id_2', myId).eq('status', 'pending');
 }
 
-// ---------- Shares / inbox ----------
+// ---------- Direct messages ----------
+// Sharing a story to a friend is a message with `story_id` set, so shares and
+// chat live in the same conversation (superseding the old shared_stories table).
 
-export async function fetchInbox(db: SupabaseClient, myId: string): Promise<SharedStory[]> {
-  const { data } = await db.from('shared_stories').select('*').eq('to_user_id', myId).order('created_at', { ascending: false }).limit(50);
-  const rows = (data as any[]) ?? [];
-  const [stories, profiles] = await Promise.all([
-    fetchStoriesByIds(db, Array.from(new Set(rows.map((r) => r.story_id)))),
-    fetchProfilesByIds(db, Array.from(new Set(rows.map((r) => r.from_user_id)))),
+/**
+ * Every message I'm part of, collapsed into one row per conversation partner.
+ * Fetched in a single query and grouped in JS — the volume per user is small,
+ * and it avoids a round trip per conversation.
+ */
+export async function fetchConversations(db: SupabaseClient, myId: string): Promise<Conversation[]> {
+  const { data } = await db
+    .from('messages')
+    .select('*')
+    .or(`sender_id.eq.${myId},recipient_id.eq.${myId}`)
+    .order('created_at', { ascending: false })
+    .limit(400);
+  const rows = (data as Message[]) ?? [];
+  if (rows.length === 0) return [];
+
+  const latestByPartner = new Map<string, Message>();
+  const unreadByPartner = new Map<string, number>();
+  for (const m of rows) {
+    const partner = m.sender_id === myId ? m.recipient_id : m.sender_id;
+    if (!latestByPartner.has(partner)) latestByPartner.set(partner, m); // rows are newest-first
+    if (m.recipient_id === myId && !m.read) unreadByPartner.set(partner, (unreadByPartner.get(partner) ?? 0) + 1);
+  }
+
+  const partnerIds = Array.from(latestByPartner.keys());
+  const storyIds = Array.from(new Set(Array.from(latestByPartner.values()).map((m) => m.story_id).filter(Boolean) as string[]));
+  const [profiles, stories] = await Promise.all([
+    fetchProfilesByIds(db, partnerIds),
+    fetchStoriesByIds(db, storyIds),
   ]);
-  return rows.map((r) => ({ ...r, story: stories[r.story_id], from: profiles[r.from_user_id] }));
+
+  return partnerIds
+    .filter((id) => profiles[id])
+    .map((id) => {
+      const lastMessage = latestByPartner.get(id)!;
+      return {
+        user: profiles[id],
+        lastMessage: lastMessage.story_id ? { ...lastMessage, story: stories[lastMessage.story_id] } : lastMessage,
+        unread: unreadByPartner.get(id) ?? 0,
+      };
+    });
 }
 
-export async function shareStoryRemote(db: SupabaseClient, myId: string, friendId: string, storyId: string): Promise<void> {
-  await db.from('shared_stories').insert({ story_id: storyId, from_user_id: myId, to_user_id: friendId });
+/** The full back-and-forth with one person, oldest first. */
+export async function fetchThread(db: SupabaseClient, myId: string, otherId: string): Promise<Message[]> {
+  const { data } = await db
+    .from('messages')
+    .select('*')
+    .or(`and(sender_id.eq.${myId},recipient_id.eq.${otherId}),and(sender_id.eq.${otherId},recipient_id.eq.${myId})`)
+    .order('created_at', { ascending: true })
+    .limit(300);
+  const rows = (data as Message[]) ?? [];
+  const storyIds = Array.from(new Set(rows.map((m) => m.story_id).filter(Boolean) as string[]));
+  const stories = await fetchStoriesByIds(db, storyIds);
+  return rows.map((m) => (m.story_id ? { ...m, story: stories[m.story_id] } : m));
 }
 
-export async function markInboxReadRemote(db: SupabaseClient, myId: string, shareId: string): Promise<void> {
-  await db.from('shared_stories').update({ read: true }).eq('id', shareId).eq('to_user_id', myId);
+export async function sendMessageRemote(
+  db: SupabaseClient, myId: string, otherId: string, content: string | null, storyId: string | null
+): Promise<Message | null> {
+  const { data, error } = await db
+    .from('messages')
+    .insert({ sender_id: myId, recipient_id: otherId, content, story_id: storyId })
+    .select('*')
+    .single();
+  return error ? null : (data as Message);
+}
+
+export async function markThreadReadRemote(db: SupabaseClient, myId: string, otherId: string): Promise<void> {
+  await db.from('messages').update({ read: true }).eq('recipient_id', myId).eq('sender_id', otherId).eq('read', false);
 }
 
 // ---------- Saves / likes ----------

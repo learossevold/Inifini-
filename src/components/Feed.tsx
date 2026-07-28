@@ -99,7 +99,9 @@ export default function Feed() {
           <nav className="flex items-center gap-6">
             <TabBtn id="watch" label="Watch" />
             <TabBtn id="news" label="News" />
-            <TabBtn id="following" label="Following" />
+            {/* Internally still the "following" feed — nobody follows *people*,
+                so it reads as Explore: your interests + the outlets you picked. */}
+            <TabBtn id="following" label="Explore" />
           </nav>
         </div>
       </header>
@@ -118,8 +120,8 @@ export default function Feed() {
         <main className="px-4">
           {followingEmpty ? (
             <div className="mt-20 text-center">
-              <p className="font-serif text-2xl font-semibold">Follow topics or sources to personalize your feed.</p>
-              <p className="mx-auto mt-3 max-w-xs text-sm text-muted">Choose subjects or news sources you care about and stories from them will gather here.</p>
+              <p className="font-serif text-2xl font-semibold">Pick what you&rsquo;re into.</p>
+              <p className="mx-auto mt-3 max-w-xs text-sm text-muted">Choose the subjects and news outlets you care about — everything they publish gathers here.</p>
               <Link href="/profile" className="mt-6 inline-block rounded-md bg-ink px-5 py-2.5 text-sm font-medium text-paper">Choose topics &amp; sources</Link>
             </div>
           ) : (

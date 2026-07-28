@@ -133,6 +133,23 @@ create table if not exists shared_stories (
   read boolean not null default false
 );
 
+-- ---------- DIRECT MESSAGES ----------
+-- 1:1 only, so a conversation is simply "every message between these two
+-- users". Storing the pair directly (rather than a participants table) keeps
+-- the RLS policies non-recursive.
+create table if not exists messages (
+  id uuid primary key default gen_random_uuid(),
+  sender_id uuid not null references auth.users(id) on delete cascade,
+  recipient_id uuid not null references auth.users(id) on delete cascade,
+  content text,
+  story_id uuid references stories(id) on delete set null,
+  created_at timestamptz not null default now(),
+  read boolean not null default false,
+  constraint message_has_body check (content is not null or story_id is not null)
+);
+create index if not exists messages_pair_idx on messages (sender_id, recipient_id, created_at desc);
+create index if not exists messages_unread_idx on messages (recipient_id, read);
+
 -- ---------- SAVES / LIKES ----------
 create table if not exists story_saves (
   story_id uuid references stories(id) on delete cascade,
@@ -173,6 +190,7 @@ alter table user_interests enable row level security;
 alter table user_sources enable row level security;
 alter table friendships enable row level security;
 alter table shared_stories enable row level security;
+alter table messages enable row level security;
 alter table story_saves enable row level security;
 alter table story_likes enable row level security;
 alter table comments enable row level security;
@@ -204,6 +222,14 @@ create policy "delete own friendship" on friendships for delete using (auth.uid(
 create policy "see own shares" on shared_stories for select using (auth.uid() = from_user_id or auth.uid() = to_user_id);
 create policy "send share" on shared_stories for insert with check (auth.uid() = from_user_id);
 create policy "mark share read" on shared_stories for update using (auth.uid() = to_user_id);
+
+-- Direct messages: only the two people in the conversation
+drop policy if exists "read own messages" on messages;
+create policy "read own messages" on messages for select using (auth.uid() = sender_id or auth.uid() = recipient_id);
+drop policy if exists "send message" on messages;
+create policy "send message" on messages for insert with check (auth.uid() = sender_id);
+drop policy if exists "mark message read" on messages;
+create policy "mark message read" on messages for update using (auth.uid() = recipient_id);
 
 -- Saves / likes: owner only
 create policy "manage own saves" on story_saves for all using (auth.uid() = user_id) with check (auth.uid() = user_id);

@@ -23,6 +23,8 @@ export default function AdminPage() {
   const [ingestResult, setIngestResult] = useState<string | null>(null);
   const [narrating, setNarrating] = useState(false);
   const [narrateResult, setNarrateResult] = useState<string | null>(null);
+  const [resumming, setResumming] = useState(false);
+  const [resummarizeResult, setResummarizeResult] = useState<string | null>(null);
 
   const loadStats = useCallback(async (pw: string) => {
     setError(null);
@@ -67,6 +69,27 @@ export default function AdminPage() {
       setIngestResult('Ingestion request failed.');
     } finally {
       setIngesting(false);
+    }
+  };
+
+  // Existing stories keep whatever summary they were ingested with. This
+  // rewrites the short ones — the way to backfill after adding an AI key.
+  const triggerResummarize = async () => {
+    setResumming(true);
+    setResummarizeResult(null);
+    try {
+      const res = await fetch('/api/ingest/resummarize', { method: 'POST', headers: { 'x-admin-password': password } });
+      const data = await res.json();
+      setResummarizeResult(
+        res.ok
+          ? data.message ?? `Rewrote ${data.updated}/${data.total} short summaries, ${data.failed} failed. Run again for the next batch.`
+          : `Failed: ${data.error}`
+      );
+      await loadStats(password);
+    } catch {
+      setResummarizeResult('Re-summarize request failed.');
+    } finally {
+      setResumming(false);
     }
   };
 
@@ -143,6 +166,15 @@ export default function AdminPage() {
             {ingesting ? 'Ingesting… (fetching feeds + generating summaries)' : 'Run ingestion now'}
           </button>
           {ingestResult && <p className="mt-3 rounded-md bg-accentSoft px-3 py-2">{ingestResult}</p>}
+
+          <button
+            onClick={triggerResummarize}
+            disabled={resumming}
+            className="mt-3 w-full rounded-md border border-ink bg-white py-3 font-medium text-ink disabled:opacity-60"
+          >
+            {resumming ? 'Rewriting… (generating longer summaries)' : 'Rewrite short summaries'}
+          </button>
+          {resummarizeResult && <p className="mt-3 rounded-md bg-accentSoft px-3 py-2">{resummarizeResult}</p>}
 
           <button
             onClick={triggerNarration}

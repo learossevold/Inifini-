@@ -29,7 +29,7 @@ function CommentSheet({ story, onClose }: { story: Story; onClose: () => void })
       <button className="absolute inset-0 bg-black/40" onClick={onClose} aria-label="Close comments" />
 
       {/* sheet — 65 vh, dark, rounded top */}
-      <div className="relative flex h-[65vh] flex-col rounded-t-2xl bg-[#181818] shadow-2xl animate-fadeUp">
+      <div className="relative flex h-[65vh] flex-col rounded-t-2xl bg-[#14152C] shadow-2xl animate-fadeUp">
         {/* drag handle */}
         <div className="flex justify-center pt-3 pb-1">
           <div className="h-1 w-10 rounded-full bg-white/20" />
@@ -187,7 +187,7 @@ function WatchCard({
           <Image src={story.image_url!} alt="" fill sizes="448px" className={`object-cover opacity-70 ${active ? 'animate-kenburns' : ''}`} onError={() => setImgFailed(true)} unoptimized />
         </div>
       ) : (
-        <div className="absolute inset-0 bg-gradient-to-br from-[#2a2622] to-night" aria-hidden />
+        <div className="absolute inset-0 bg-gradient-to-br from-[#1E2043] to-night" aria-hidden />
       )}
       <div className="absolute inset-0 bg-gradient-to-t from-night via-night/30 to-night/60" aria-hidden />
 
@@ -262,7 +262,7 @@ function WatchArticle({
         {showImage ? (
           <Image src={story.image_url!} alt="" fill sizes="448px" className="object-cover" onError={() => setImgFailed(true)} unoptimized />
         ) : (
-          <div className="absolute inset-0 bg-gradient-to-br from-[#2a2622] to-night" aria-hidden />
+          <div className="absolute inset-0 bg-gradient-to-br from-[#1E2043] to-night" aria-hidden />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-night/80 via-transparent to-night/30" aria-hidden />
       </button>

@@ -1,9 +1,10 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, useCallback, useRef, ReactNode } from 'react';
-import { Category, Comment, Profile, SharedStory } from '@/lib/types';
+import { Category, Comment, Conversation, Message, Profile } from '@/lib/types';
 import {
-  MOCK_ME, MOCK_FRIENDS, MOCK_FRIEND_REQUESTS, MOCK_COMMENTS, MOCK_INBOX, MOCK_USERS,
+  MOCK_ME, MOCK_FRIENDS, MOCK_FRIEND_REQUESTS, MOCK_COMMENTS, MOCK_USERS,
+  MOCK_CONVERSATIONS, MOCK_THREADS, MOCK_STORIES,
 } from '@/lib/mock-data';
 import { supabaseBrowser, supabaseConfigured } from '@/lib/supabase';
 import * as social from '@/lib/social';
@@ -30,7 +31,7 @@ interface SessionState {
   likes: Set<string>;
   friends: Profile[];
   friendRequests: Profile[];
-  inbox: SharedStory[];
+  conversations: Conversation[];
   commentsByStory: Record<string, Comment[]>;
 }
 
@@ -48,8 +49,10 @@ interface SessionAPI extends SessionState {
   sendFriendRequest: (targetId: string) => Promise<{ error?: string }>;
   acceptFriend: (id: string) => void;
   declineFriend: (id: string) => void;
-  markInboxRead: (id: string) => void;
   shareToFriend: (storyId: string, friendId: string) => void;
+  loadThread: (otherId: string) => Promise<Message[]>;
+  sendMessage: (otherId: string, content: string) => Promise<void>;
+  markConversationRead: (otherId: string) => void;
   addComment: (storyId: string, content: string, parentId?: string | null) => void;
   likeComment: (storyId: string, commentId: string) => void;
   ensureComments: (storyId: string) => void;
@@ -71,11 +74,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [likes, setLikes] = useState<Set<string>>(configured ? new Set() : new Set(['demo-2']));
   const [friends, setFriends] = useState<Profile[]>(configured ? [] : MOCK_FRIENDS);
   const [friendRequests, setFriendRequests] = useState<Profile[]>(configured ? [] : MOCK_FRIEND_REQUESTS);
-  const [inbox, setInbox] = useState<SharedStory[]>(configured ? [] : MOCK_INBOX);
+  const [conversations, setConversations] = useState<Conversation[]>(configured ? [] : MOCK_CONVERSATIONS);
   const [commentsByStory, setCommentsByStory] = useState<Record<string, Comment[]>>(() =>
     configured ? {} : JSON.parse(JSON.stringify(MOCK_COMMENTS))
   );
   const loadedCommentsRef = useRef<Set<string>>(new Set());
+  // Demo mode keeps threads in memory so a sent message shows up in the chat.
+  const mockThreadsRef = useRef<Record<string, Message[]>>(
+    configured ? {} : JSON.parse(JSON.stringify(MOCK_THREADS))
+  );
 
   // ---- Real auth: track the Supabase session and load user data on sign-in ----
   useEffect(() => {
@@ -97,11 +104,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      const [ints, srcs, fr, inboxRows, sl] = await Promise.all([
+      const [ints, srcs, fr, convos, sl] = await Promise.all([
         social.fetchInterests(db, uid),
         social.fetchFollowedSources(db, uid),
         social.fetchFriendsAndRequests(db, uid),
-        social.fetchInbox(db, uid),
+        social.fetchConversations(db, uid),
         social.fetchSavesLikes(db, uid),
       ]);
       if (cancelled) return;
@@ -109,7 +116,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setFollowedSources(new Set(srcs));
       setFriends(fr.friends);
       setFriendRequests(fr.requests);
-      setInbox(inboxRows);
+      setConversations(convos);
       setSaves(sl.saves);
       setLikes(sl.likes);
       setOnboarded(true);
@@ -217,15 +224,68 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     if (db && me) social.declineFriendRemote(db, me.id, id);
   }, [me]);
 
-  const markInboxRead = useCallback((id: string) => {
-    setInbox((prev) => prev.map((s) => (s.id === id ? { ...s, read: true } : s)));
-    const db = supabaseBrowser();
-    if (db && me) social.markInboxReadRemote(db, me.id, id);
-  }, [me]);
+  /** Move a conversation to the top of the inbox with its newest message. */
+  const bumpConversation = useCallback((partnerId: string, message: Message) => {
+    setConversations((prev) => {
+      const existing = prev.find((c) => c.user.id === partnerId);
+      const user = existing?.user ?? friends.find((f) => f.id === partnerId) ?? MOCK_USERS.find((u) => u.id === partnerId);
+      if (!user) return prev;
+      const rest = prev.filter((c) => c.user.id !== partnerId);
+      const unread = message.recipient_id === (me?.id ?? 'me') && !message.read ? (existing?.unread ?? 0) + 1 : (existing?.unread ?? 0);
+      return [{ user, lastMessage: message, unread }, ...rest];
+    });
+  }, [friends, me]);
 
   const shareToFriend = useCallback((storyId: string, friendId: string) => {
+    const myId = me?.id ?? 'me';
+    const local: Message = {
+      id: `local-${Date.now()}`, sender_id: myId, recipient_id: friendId,
+      content: null, story_id: storyId, created_at: new Date().toISOString(), read: true,
+      story: MOCK_STORIES.find((s) => s.id === storyId),
+    };
     const db = supabaseBrowser();
-    if (db && me) social.shareStoryRemote(db, me.id, friendId, storyId);
+    if (db && me) {
+      social.sendMessageRemote(db, me.id, friendId, null, storyId);
+    } else {
+      const thread = mockThreadsRef.current[friendId] ?? [];
+      mockThreadsRef.current[friendId] = [...thread, local];
+    }
+    bumpConversation(friendId, local);
+  }, [me, bumpConversation]);
+
+  const loadThread = useCallback(async (otherId: string): Promise<Message[]> => {
+    const db = supabaseBrowser();
+    if (db && me) return social.fetchThread(db, me.id, otherId);
+    // Demo mode: attach the story each shared message points at.
+    return (mockThreadsRef.current[otherId] ?? []).map((m) =>
+      m.story_id ? { ...m, story: m.story ?? MOCK_STORIES.find((s) => s.id === m.story_id) } : m
+    );
+  }, [me]);
+
+  const sendMessage = useCallback(async (otherId: string, content: string): Promise<void> => {
+    const trimmed = content.trim();
+    if (!trimmed) return;
+    const myId = me?.id ?? 'me';
+    const local: Message = {
+      id: `local-${Date.now()}`, sender_id: myId, recipient_id: otherId,
+      content: trimmed, story_id: null, created_at: new Date().toISOString(), read: true,
+    };
+    const db = supabaseBrowser();
+    if (db && me) {
+      await social.sendMessageRemote(db, me.id, otherId, trimmed, null);
+    } else {
+      const thread = mockThreadsRef.current[otherId] ?? [];
+      mockThreadsRef.current[otherId] = [...thread, local];
+    }
+    bumpConversation(otherId, local);
+  }, [me, bumpConversation]);
+
+  const markConversationRead = useCallback((otherId: string) => {
+    setConversations((prev) => prev.map((c) => (c.user.id === otherId ? { ...c, unread: 0 } : c)));
+    const db = supabaseBrowser();
+    if (db && me) { social.markThreadReadRemote(db, me.id, otherId); return; }
+    const thread = mockThreadsRef.current[otherId];
+    if (thread) mockThreadsRef.current[otherId] = thread.map((m) => ({ ...m, read: true }));
   }, [me]);
 
   const addComment = useCallback((storyId: string, content: string, parentId: string | null = null) => {
@@ -269,13 +329,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     });
   }, [me]);
 
-  const unreadCount = inbox.filter((s) => !s.read).length + friendRequests.length;
+  const unreadCount = conversations.reduce((n, c) => n + c.unread, 0) + friendRequests.length;
 
   const value: SessionAPI = {
-    me, onboarded, interests, followedSources, saves, likes, friends, friendRequests, inbox, commentsByStory,
+    me, onboarded, interests, followedSources, saves, likes, friends, friendRequests, conversations, commentsByStory,
     configured, status, unreadCount,
     signInWithEmail, signOut, completeOnboarding, setInterests, toggleSource, toggleSave, toggleLike,
-    sendFriendRequest, acceptFriend, declineFriend, markInboxRead, shareToFriend,
+    sendFriendRequest, acceptFriend, declineFriend, shareToFriend,
+    loadThread, sendMessage, markConversationRead,
     addComment, likeComment, ensureComments,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

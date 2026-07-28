@@ -13,7 +13,7 @@ export const metadata: Metadata = {
   manifest: '/manifest.json',
   appleWebApp: { capable: true, statusBarStyle: 'default', title: 'Inifini' },
 };
-export const viewport: Viewport = { width: 'device-width', initialScale: 1, maximumScale: 1, themeColor: '#FBFAF7' };
+export const viewport: Viewport = { width: 'device-width', initialScale: 1, maximumScale: 1, themeColor: '#FCFCFD' };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

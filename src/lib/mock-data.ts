@@ -1,4 +1,4 @@
-import { Story, Category, Profile, Comment, SharedStory } from './types';
+import { Story, Category, Profile, Comment, Conversation, Message } from './types';
 
 const now = Date.now();
 const h = (hoursAgo: number) => new Date(now - hoursAgo * 3600_000).toISOString();
@@ -229,10 +229,36 @@ export const MOCK_COMMENTS: Record<string, Comment[]> = {
   ],
 };
 
-export const MOCK_INBOX: SharedStory[] = [
-  { id: 's1', story_id: 'demo-7', from_user_id: 'u2', to_user_id: 'me', created_at: h(1.5), read: false, story: MOCK_STORIES.find((s) => s.id === 'demo-7'), from: { username: 'mariak', display_name: 'Maria K.', avatar_url: null } },
-  { id: 's2', story_id: 'demo-2', from_user_id: 'u3', to_user_id: 'me', created_at: h(5), read: true, story: MOCK_STORIES.find((s) => s.id === 'demo-2'), from: { username: 'jonas', display_name: 'Jonas', avatar_url: null } },
-];
+// ---- Mock direct messages (demo mode) ----
+const msg = (over: Partial<Message> & { id: string; sender_id: string; recipient_id: string }): Message => ({
+  content: null, story_id: null, created_at: h(1), read: true, ...over,
+});
+
+export const MOCK_THREADS: Record<string, Message[]> = {
+  u2: [
+    msg({ id: 'm1', sender_id: 'u2', recipient_id: 'me', story_id: 'demo-7', created_at: h(1.5), read: false }),
+    msg({ id: 'm2', sender_id: 'u2', recipient_id: 'me', content: 'This is exactly what we were talking about!', created_at: h(1.4), read: false }),
+  ],
+  u3: [
+    msg({ id: 'm3', sender_id: 'me', recipient_id: 'u3', content: 'Did you see the energy package news?', created_at: h(6) }),
+    msg({ id: 'm4', sender_id: 'u3', recipient_id: 'me', story_id: 'demo-2', created_at: h(5) }),
+    msg({ id: 'm5', sender_id: 'u3', recipient_id: 'me', content: 'Yeah — sending it here so you have it.', created_at: h(5) }),
+  ],
+  u4: [
+    msg({ id: 'm6', sender_id: 'u4', recipient_id: 'me', content: 'Morning ☕️ anything worth reading today?', created_at: h(20) }),
+  ],
+};
+
+export const MOCK_CONVERSATIONS: Conversation[] = Object.entries(MOCK_THREADS)
+  .map(([userId, thread]) => {
+    const last = thread[thread.length - 1];
+    return {
+      user: MOCK_USERS.find((u) => u.id === userId)!,
+      lastMessage: last.story_id ? { ...last, story: MOCK_STORIES.find((s) => s.id === last.story_id) } : last,
+      unread: thread.filter((m) => m.recipient_id === 'me' && !m.read).length,
+    };
+  })
+  .sort((a, b) => new Date(b.lastMessage.created_at).getTime() - new Date(a.lastMessage.created_at).getTime());
 
 /** Cycle the pool so the feed never ends in mock mode. */
 export function mockPage(page: number, pool: Story[] = MOCK_STORIES): Story[] {

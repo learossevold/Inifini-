@@ -109,6 +109,25 @@ export interface SharedStory {
   from?: Pick<Profile, 'username' | 'display_name' | 'avatar_url'>;
 }
 
+export interface Message {
+  id: string;
+  sender_id: string;
+  recipient_id: string;
+  content: string | null;
+  story_id: string | null;
+  created_at: string;
+  read: boolean;
+  // joined for display
+  story?: Story;
+}
+
+/** One row in the inbox: the other person, plus a preview of the latest message. */
+export interface Conversation {
+  user: Profile;
+  lastMessage: Message;
+  unread: number;
+}
+
 export interface Source {
   id: string;
   name: string;

@@ -4,14 +4,18 @@ const config: Config = {
   content: ['./src/**/*.{ts,tsx}'],
   theme: {
     extend: {
+      // Palette matches the Inifini landing page: deep navy, signal blue, gold.
       colors: {
-        paper: '#FBFAF7',
-        ink: '#16140F',
-        muted: '#6B675D',
-        rule: '#E6E2D8',
-        accent: '#B23A28', // warm signal red — breaking + active states only
-        accentSoft: '#F5E6E2',
-        night: '#0E0D0B', // full-screen video / watch background
+        paper: '#FCFCFD',
+        ink: '#14152D', // navy-black — body text + primary buttons
+        muted: '#676B78',
+        rule: '#ECEBF0',
+        accent: '#2C3E9E', // signal blue — breaking + active states only
+        accentSoft: '#E8EAF7',
+        navy: '#13142B', // brand badge / dark surfaces
+        gold: '#D6A84A', // reserved highlight (badges, "coming soon" style marks)
+        goldSoft: '#FAF3E4',
+        night: '#0B0C1D', // full-screen video / watch background
       },
       fontFamily: {
         serif: ['var(--font-fraunces)', 'Georgia', 'serif'],
