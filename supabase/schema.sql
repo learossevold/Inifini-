@@ -3,6 +3,17 @@
 
 create extension if not exists "pgcrypto";
 
+-- ---------- WAITLIST (pre-launch landing page signups) ----------
+create table if not exists waitlist (
+  id uuid primary key default gen_random_uuid(),
+  email text not null unique,
+  source text,
+  created_at timestamptz not null default now()
+);
+alter table waitlist enable row level security;
+drop policy if exists "public can join waitlist" on waitlist;
+create policy "public can join waitlist" on waitlist for insert with check (true);
+
 -- ---------- SOURCES ----------
 create table if not exists sources (
   id uuid primary key default gen_random_uuid(),

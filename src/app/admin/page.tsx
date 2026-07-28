@@ -9,6 +9,7 @@ interface Stats {
   sourceCount: number;
   lastIngestion: string | null;
   aiEngine: string;
+  waitlistCount: number;
   sources: { name: string; domain: string; active: boolean; last_status: string | null; last_fetched_at: string | null }[];
   recentStories: { title: string; source_name: string; published_at: string; is_demo: boolean }[];
 }
@@ -125,6 +126,7 @@ export default function AdminPage() {
               ['Last ingestion', stats.lastIngestion ? new Date(stats.lastIngestion).toLocaleString() : 'never'],
               ['AI engine', stats.aiEngine],
               ['Data mode', stats.mode],
+              ['Waitlist signups', String(stats.waitlistCount)],
             ].map(([k, v]) => (
               <div key={k} className="rounded-md border border-rule bg-white/60 px-4 py-3">
                 <p className="text-[11px] uppercase tracking-wider text-muted">{k}</p>
