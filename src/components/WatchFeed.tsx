@@ -9,7 +9,8 @@ import Comments from './Comments';
 import { useSession } from '@/lib/session';
 
 function CommentSheet({ story, onClose }: { story: Story; onClose: () => void }) {
-  const { addComment, commentsByStory } = useSession();
+  const { addComment, commentsByStory, ensureComments } = useSession();
+  useEffect(() => { ensureComments(story.id); }, [story.id, ensureComments]);
   const [text, setText] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const comments = commentsByStory[story.id] ?? [];

@@ -62,8 +62,10 @@ create table if not exists profiles (
   display_name text not null default '',
   avatar_url text,
   bio text,
+  onboarded boolean not null default false,
   created_at timestamptz not null default now()
 );
+alter table profiles add column if not exists onboarded boolean not null default false;
 
 -- Auto-create a profile row when a new auth user signs up.
 create or replace function handle_new_user()
@@ -167,6 +169,8 @@ create policy "manage own interests" on user_interests for all using (auth.uid()
 create policy "see own friendships" on friendships for select using (auth.uid() = user_id_1 or auth.uid() = user_id_2);
 create policy "create friendship" on friendships for insert with check (auth.uid() = user_id_1);
 create policy "update own friendship" on friendships for update using (auth.uid() = user_id_1 or auth.uid() = user_id_2);
+drop policy if exists "delete own friendship" on friendships;
+create policy "delete own friendship" on friendships for delete using (auth.uid() = user_id_1 or auth.uid() = user_id_2);
 
 -- Shared stories: sender or recipient
 create policy "see own shares" on shared_stories for select using (auth.uid() = from_user_id or auth.uid() = to_user_id);

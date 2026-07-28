@@ -1,19 +1,25 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, useRef, ReactNode } from 'react';
 import { Category, Comment, Profile, SharedStory } from '@/lib/types';
 import {
   MOCK_ME, MOCK_FRIENDS, MOCK_FRIEND_REQUESTS, MOCK_COMMENTS, MOCK_INBOX, MOCK_USERS,
 } from '@/lib/mock-data';
+import { supabaseBrowser, supabaseConfigured } from '@/lib/supabase';
+import * as social from '@/lib/social';
 
 /**
- * Demo-mode session: a logged-in mock user with interests, saves, likes,
- * friends, comments and a shared-story inbox — all in memory.
- * Persists to memory only (no localStorage, per environment constraints);
- * resets on reload, which is fine for an MVP demo.
+ * Session: signed-in user + the social layer (friends, comments, shares,
+ * saves/likes).
  *
- * When Supabase is wired up, these methods are the seam to swap for real calls.
+ * Without Supabase configured, this runs as an in-memory demo (mock user,
+ * mock friends/comments, resets on reload) — the zero-key experience.
+ *
+ * With Supabase configured, it drives real magic-link auth and every action
+ * writes through to the database (see src/lib/social.ts for the queries).
  */
+
+export type AuthStatus = 'loading' | 'signed-out' | 'needs-onboarding' | 'ready';
 
 interface SessionState {
   me: Profile | null;
@@ -28,57 +34,159 @@ interface SessionState {
 }
 
 interface SessionAPI extends SessionState {
+  configured: boolean;
+  status: AuthStatus;
   unreadCount: number;
-  signIn: (username: string) => void;
-  completeOnboarding: (username: string, interests: Category[]) => void;
+  signInWithEmail: (email: string) => Promise<{ error?: string }>;
+  signOut: () => Promise<void>;
+  completeOnboarding: (username: string, interests: Category[]) => Promise<{ error?: string }>;
   setInterests: (c: Category[]) => void;
   toggleSave: (storyId: string) => void;
   toggleLike: (storyId: string) => void;
+  sendFriendRequest: (targetId: string) => Promise<{ error?: string }>;
   acceptFriend: (id: string) => void;
   declineFriend: (id: string) => void;
   markInboxRead: (id: string) => void;
   shareToFriend: (storyId: string, friendId: string) => void;
   addComment: (storyId: string, content: string, parentId?: string | null) => void;
   likeComment: (storyId: string, commentId: string) => void;
+  ensureComments: (storyId: string) => void;
 }
 
 const Ctx = createContext<SessionAPI | null>(null);
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 export function SessionProvider({ children }: { children: ReactNode }) {
-  const [me, setMe] = useState<Profile | null>(MOCK_ME);
-  const [onboarded, setOnboarded] = useState(false);
+  const configured = supabaseConfigured();
+
+  const [me, setMe] = useState<Profile | null>(configured ? null : MOCK_ME);
+  const [status, setStatus] = useState<AuthStatus>(configured ? 'loading' : 'ready');
+  const [onboarded, setOnboarded] = useState(!configured);
   const [interests, setInterestsState] = useState<Category[]>(['norway', 'world', 'ai', 'local']);
   const [saves, setSaves] = useState<Set<string>>(new Set());
-  const [likes, setLikes] = useState<Set<string>>(new Set(['demo-2']));
-  const [friends, setFriends] = useState<Profile[]>(MOCK_FRIENDS);
-  const [friendRequests, setFriendRequests] = useState<Profile[]>(MOCK_FRIEND_REQUESTS);
-  const [inbox, setInbox] = useState<SharedStory[]>(MOCK_INBOX);
+  const [likes, setLikes] = useState<Set<string>>(configured ? new Set() : new Set(['demo-2']));
+  const [friends, setFriends] = useState<Profile[]>(configured ? [] : MOCK_FRIENDS);
+  const [friendRequests, setFriendRequests] = useState<Profile[]>(configured ? [] : MOCK_FRIEND_REQUESTS);
+  const [inbox, setInbox] = useState<SharedStory[]>(configured ? [] : MOCK_INBOX);
   const [commentsByStory, setCommentsByStory] = useState<Record<string, Comment[]>>(() =>
-    JSON.parse(JSON.stringify(MOCK_COMMENTS))
+    configured ? {} : JSON.parse(JSON.stringify(MOCK_COMMENTS))
   );
+  const loadedCommentsRef = useRef<Set<string>>(new Set());
 
-  // Mark onboarded after first mount if the mock user has a real-looking username already
-  useEffect(() => { if (me && me.username && me.username !== '') setOnboarded(true); }, [me]);
+  // ---- Real auth: track the Supabase session and load user data on sign-in ----
+  useEffect(() => {
+    if (!configured) return;
+    const db = supabaseBrowser();
+    if (!db) return;
+    let cancelled = false;
 
-  const signIn = useCallback((username: string) => {
-    setMe({ ...MOCK_ME, username, display_name: username });
+    const loadForUser = async (uid: string) => {
+      let profile = await social.fetchProfile(db, uid);
+      for (let i = 0; i < 6 && !profile; i++) { await sleep(400); profile = await social.fetchProfile(db, uid); }
+      if (cancelled || !profile) return;
+
+      setMe({ id: profile.id, username: profile.username, display_name: profile.display_name, avatar_url: profile.avatar_url, bio: profile.bio, created_at: profile.created_at });
+
+      if (!profile.onboarded) {
+        setOnboarded(false);
+        setStatus('needs-onboarding');
+        return;
+      }
+
+      const [ints, fr, inboxRows, sl] = await Promise.all([
+        social.fetchInterests(db, uid),
+        social.fetchFriendsAndRequests(db, uid),
+        social.fetchInbox(db, uid),
+        social.fetchSavesLikes(db, uid),
+      ]);
+      if (cancelled) return;
+      setInterestsState(ints);
+      setFriends(fr.friends);
+      setFriendRequests(fr.requests);
+      setInbox(inboxRows);
+      setSaves(sl.saves);
+      setLikes(sl.likes);
+      setOnboarded(true);
+      setStatus('ready');
+    };
+
+    db.auth.getSession().then(({ data }) => {
+      if (cancelled) return;
+      if (data.session) loadForUser(data.session.user.id);
+      else setStatus('signed-out');
+    });
+
+    const { data: sub } = db.auth.onAuthStateChange((_event, session) => {
+      if (session) loadForUser(session.user.id);
+      else { setMe(null); setOnboarded(false); setStatus('signed-out'); }
+    });
+
+    return () => { cancelled = true; sub.subscription.unsubscribe(); };
+  }, [configured]);
+
+  const signInWithEmail = useCallback(async (email: string): Promise<{ error?: string }> => {
+    const db = supabaseBrowser();
+    if (!db) return { error: 'Not configured' };
+    const { error } = await db.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: typeof window !== 'undefined' ? window.location.origin : undefined },
+    });
+    return error ? { error: error.message } : {};
   }, []);
 
-  const completeOnboarding = useCallback((username: string, chosen: Category[]) => {
+  const signOut = useCallback(async () => {
+    const db = supabaseBrowser();
+    if (db) await db.auth.signOut();
+  }, []);
+
+  const completeOnboarding = useCallback(async (username: string, chosen: Category[]): Promise<{ error?: string }> => {
+    const db = supabaseBrowser();
+    if (db && me) {
+      const { error } = await social.completeOnboardingRemote(db, me.id, username, chosen);
+      if (error) return { error };
+      setMe((m) => (m ? { ...m, username, display_name: username } : m));
+      setInterestsState(chosen);
+      setOnboarded(true);
+      setStatus('ready');
+      return {};
+    }
+    // Mock mode
     setMe((m) => (m ? { ...m, username, display_name: username } : m));
     setInterestsState(chosen.length ? chosen : ['norway', 'world']);
     setOnboarded(true);
-  }, []);
+    return {};
+  }, [me]);
 
-  const setInterests = useCallback((c: Category[]) => setInterestsState(c), []);
+  const setInterests = useCallback((c: Category[]) => {
+    setInterestsState(c);
+    const db = supabaseBrowser();
+    if (db && me) social.saveInterests(db, me.id, c);
+  }, [me]);
 
   const toggleSave = useCallback((storyId: string) => {
-    setSaves((prev) => { const n = new Set(prev); n.has(storyId) ? n.delete(storyId) : n.add(storyId); return n; });
-  }, []);
+    const wasSaved = saves.has(storyId);
+    const next = new Set(saves);
+    wasSaved ? next.delete(storyId) : next.add(storyId);
+    setSaves(next);
+    const db = supabaseBrowser();
+    if (db && me) social.setSaveRemote(db, me.id, storyId, !wasSaved);
+  }, [saves, me]);
 
   const toggleLike = useCallback((storyId: string) => {
-    setLikes((prev) => { const n = new Set(prev); n.has(storyId) ? n.delete(storyId) : n.add(storyId); return n; });
-  }, []);
+    const wasLiked = likes.has(storyId);
+    const next = new Set(likes);
+    wasLiked ? next.delete(storyId) : next.add(storyId);
+    setLikes(next);
+    const db = supabaseBrowser();
+    if (db && me) social.setLikeRemote(db, me.id, storyId, !wasLiked);
+  }, [likes, me]);
+
+  const sendFriendRequest = useCallback(async (targetId: string): Promise<{ error?: string }> => {
+    const db = supabaseBrowser();
+    if (!db || !me) return { error: 'Sign in required.' };
+    return social.sendFriendRequestRemote(db, me.id, targetId);
+  }, [me]);
 
   const acceptFriend = useCallback((id: string) => {
     setFriendRequests((reqs) => {
@@ -86,21 +194,26 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       if (found) setFriends((f) => [...f, found]);
       return reqs.filter((r) => r.id !== id);
     });
-  }, []);
+    const db = supabaseBrowser();
+    if (db && me) social.acceptFriendRemote(db, me.id, id);
+  }, [me]);
 
   const declineFriend = useCallback((id: string) => {
     setFriendRequests((reqs) => reqs.filter((r) => r.id !== id));
-  }, []);
+    const db = supabaseBrowser();
+    if (db && me) social.declineFriendRemote(db, me.id, id);
+  }, [me]);
 
   const markInboxRead = useCallback((id: string) => {
     setInbox((prev) => prev.map((s) => (s.id === id ? { ...s, read: true } : s)));
-  }, []);
+    const db = supabaseBrowser();
+    if (db && me) social.markInboxReadRemote(db, me.id, id);
+  }, [me]);
 
   const shareToFriend = useCallback((storyId: string, friendId: string) => {
-    // In demo mode we just acknowledge — a real impl writes to shared_stories.
-    // No-op on local inbox (that's the recipient's), but we could log it.
-    void storyId; void friendId;
-  }, []);
+    const db = supabaseBrowser();
+    if (db && me) social.shareStoryRemote(db, me.id, friendId, storyId);
+  }, [me]);
 
   const addComment = useCallback((storyId: string, content: string, parentId: string | null = null) => {
     const author = me ? { username: me.username, display_name: me.display_name, avatar_url: me.avatar_url } : { username: 'you', display_name: 'You', avatar_url: null };
@@ -115,27 +228,42 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const attach = (cs: Comment[]): Comment[] => cs.map((c) => c.id === parentId ? { ...c, replies: [...(c.replies ?? []), newC] } : { ...c, replies: c.replies ? attach(c.replies) : c.replies });
       return { ...prev, [storyId]: attach(list) };
     });
+    const db = supabaseBrowser();
+    if (db && me) social.addCommentRemote(db, me.id, storyId, content, parentId);
   }, [me]);
 
   const likeComment = useCallback((storyId: string, commentId: string) => {
-    setCommentsByStory((prev) => {
-      const toggle = (cs: Comment[]): Comment[] => cs.map((c) => {
-        if (c.id === commentId) {
-          const liked = !c.liked_by_me;
-          return { ...c, liked_by_me: liked, like_count: (c.like_count ?? 0) + (liked ? 1 : -1) };
-        }
-        return { ...c, replies: c.replies ? toggle(c.replies) : c.replies };
-      });
-      return { ...prev, [storyId]: toggle(prev[storyId] ?? []) };
+    const list = commentsByStory[storyId] ?? [];
+    let nextLiked = false;
+    const toggle = (cs: Comment[]): Comment[] => cs.map((c) => {
+      if (c.id === commentId) {
+        nextLiked = !c.liked_by_me;
+        return { ...c, liked_by_me: nextLiked, like_count: (c.like_count ?? 0) + (nextLiked ? 1 : -1) };
+      }
+      return { ...c, replies: c.replies ? toggle(c.replies) : c.replies };
     });
-  }, []);
+    setCommentsByStory((prev) => ({ ...prev, [storyId]: toggle(list) }));
+    const db = supabaseBrowser();
+    if (db && me) social.setCommentLikeRemote(db, me.id, commentId, nextLiked);
+  }, [commentsByStory, me]);
+
+  const ensureComments = useCallback((storyId: string) => {
+    const db = supabaseBrowser();
+    if (!db || !me || loadedCommentsRef.current.has(storyId)) return;
+    loadedCommentsRef.current.add(storyId);
+    social.fetchComments(db, storyId, me.id).then((comments) => {
+      setCommentsByStory((prev) => ({ ...prev, [storyId]: comments }));
+    });
+  }, [me]);
 
   const unreadCount = inbox.filter((s) => !s.read).length + friendRequests.length;
 
   const value: SessionAPI = {
     me, onboarded, interests, saves, likes, friends, friendRequests, inbox, commentsByStory,
-    unreadCount, signIn, completeOnboarding, setInterests, toggleSave, toggleLike,
-    acceptFriend, declineFriend, markInboxRead, shareToFriend, addComment, likeComment,
+    configured, status, unreadCount,
+    signInWithEmail, signOut, completeOnboarding, setInterests, toggleSave, toggleLike,
+    sendFriendRequest, acceptFriend, declineFriend, markInboxRead, shareToFriend,
+    addComment, likeComment, ensureComments,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

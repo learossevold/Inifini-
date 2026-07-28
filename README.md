@@ -93,7 +93,7 @@ Right now the feed shows realistic demo stories. To switch to live news from NRK
 2. Add the three Supabase keys + `ADMIN_PASSWORD` to your Vercel environment variables.
 3. (Optional but recommended) add `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` so summaries are real AI summaries instead of excerpt-based fallbacks.
 4. Open `/admin`, enter the password, click **Run ingestion now**. Real stories appear in the feed.
-5. **Keep it fresh automatically:** add a Vercel Cron Job hitting `/api/ingest` every 15–30 minutes (Project → Settings → Cron Jobs). On the Hobby plan, use an external scheduler like cron-job.org that can send the `x-admin-password` header.
+5. **Keep it fresh automatically:** `vercel.json` already defines a daily cron hitting `/api/ingest` at 04:00 UTC (≈06:00 Norwegian time) — Vercel picks this up automatically on deploy, no dashboard clicking needed. For it to authenticate, add a `CRON_SECRET` environment variable in Vercel (any random string) — Vercel then signs its cron requests with it automatically and `/api/ingest` checks it. Want it more often than daily? Upgrade to Vercel Pro and tighten the `schedule` in `vercel.json`, or use an external scheduler like cron-job.org sending the `x-admin-password` header on the Hobby plan.
 
 That's the whole path from demo to a live, self-updating news app.
 

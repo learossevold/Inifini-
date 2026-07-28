@@ -7,13 +7,22 @@ import { useSession } from '@/lib/session';
 
 export default function Onboarding() {
   const router = useRouter();
-  const { completeOnboarding } = useSession();
+  const { completeOnboarding, configured } = useSession();
   const [step, setStep] = useState(0);
   const [username, setUsername] = useState('');
   const [chosen, setChosen] = useState<Category[]>(['norway', 'world']);
+  const [err, setErr] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const toggle = (c: Category) => setChosen((prev) => prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]);
-  const finish = () => { completeOnboarding(username.trim() || 'reader', chosen); router.push('/'); };
+
+  const finish = async () => {
+    setSaving(true); setErr(null);
+    const { error } = await completeOnboarding(username.trim() || 'reader', chosen);
+    setSaving(false);
+    if (error) { setErr(error); setStep(0); return; }
+    router.push('/');
+  };
 
   return (
     <div className="min-h-screen px-6 py-12">
@@ -26,12 +35,13 @@ export default function Onboarding() {
           <p className="mt-2 text-[14px] text-muted">This is how friends find you. You can change it later.</p>
           <div className="mt-5 flex items-center rounded-lg border border-rule bg-white px-3">
             <span className="text-muted">@</span>
-            <input autoFocus value={username} onChange={(e) => setUsername(e.target.value.replace(/[^a-z0-9_]/gi, '').toLowerCase())}
+            <input autoFocus value={username} onChange={(e) => { setUsername(e.target.value.replace(/[^a-z0-9_]/gi, '').toLowerCase()); setErr(null); }}
               placeholder="yourname" className="w-full bg-transparent px-2 py-3 outline-none" />
           </div>
+          {err && <p className="mt-2 text-[13px] text-accent">{err}</p>}
           <button onClick={() => setStep(1)} disabled={username.length < 2}
             className="mt-6 w-full rounded-lg bg-ink py-3.5 font-semibold text-paper disabled:opacity-40">Continue</button>
-          <p className="mt-4 text-center text-[12px] text-muted">Demo mode — no real email needed. With Supabase connected, this becomes a magic-link login.</p>
+          {!configured && <p className="mt-4 text-center text-[12px] text-muted">Demo mode — no real email needed. With Supabase connected, this becomes a magic-link login.</p>}
         </div>
       ) : (
         <div className="mt-12 animate-fadeUp">
@@ -48,8 +58,8 @@ export default function Onboarding() {
               );
             })}
           </div>
-          <button onClick={finish} disabled={chosen.length === 0}
-            className="mt-8 w-full rounded-lg bg-ink py-3.5 font-semibold text-paper disabled:opacity-40">Start reading</button>
+          <button onClick={finish} disabled={chosen.length === 0 || saving}
+            className="mt-8 w-full rounded-lg bg-ink py-3.5 font-semibold text-paper disabled:opacity-40">{saving ? 'Saving…' : 'Start reading'}</button>
           <button onClick={() => setStep(0)} className="mt-3 w-full py-2 text-[14px] text-muted">← Back</button>
         </div>
       )}

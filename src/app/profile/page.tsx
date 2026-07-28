@@ -8,7 +8,7 @@ import { MOCK_STORIES } from '@/lib/mock-data';
 import { Avatar, categoryLabel, timeAgo } from '@/components/ui';
 
 export default function ProfilePage() {
-  const { me, interests, setInterests, saves, friends } = useSession();
+  const { me, interests, setInterests, saves, friends, configured, signOut } = useSession();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Category[]>(interests);
 
@@ -71,7 +71,11 @@ export default function ProfilePage() {
         <Link href="/friends" className="block py-2.5">Friends &amp; requests</Link>
         <Link href="/about" className="block py-2.5">About, sources &amp; editorial note</Link>
         <Link href="/admin" className="block py-2.5">Admin</Link>
-        <p className="mt-4 text-[12px] text-muted">Demo account. With Supabase connected, sign-in uses a magic link sent to your email — no password to remember.</p>
+        {configured ? (
+          <button onClick={() => signOut()} className="block w-full py-2.5 text-left text-accent">Sign out</button>
+        ) : (
+          <p className="mt-4 text-[12px] text-muted">Demo account. With Supabase connected, sign-in uses a magic link sent to your email — no password to remember.</p>
+        )}
       </section>
     </main>
   );
