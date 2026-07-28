@@ -15,8 +15,8 @@ self.addEventListener('push', (event) => {
   const title = payload.title || 'Inifini';
   const options = {
     body: payload.body || '',
-    icon: '/logo.jpg',
-    badge: '/logo.jpg',
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
     tag: payload.tag || 'inifini-brief',
     data: { url: payload.url || '/' },
     renotify: false,
