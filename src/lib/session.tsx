@@ -59,6 +59,10 @@ interface SessionAPI extends SessionState {
   loadThread: (otherId: string) => Promise<Message[]>;
   sendMessage: (otherId: string, content: string) => Promise<void>;
   markConversationRead: (otherId: string) => void;
+  blockUser: (targetId: string) => Promise<{ error?: string }>;
+  unblockUser: (targetId: string) => Promise<void>;
+  listBlocked: () => Promise<Profile[]>;
+  deleteAccount: () => Promise<{ error?: string }>;
   addComment: (storyId: string, content: string, parentId?: string | null) => void;
   likeComment: (storyId: string, commentId: string) => void;
   ensureComments: (storyId: string) => void;
@@ -361,6 +365,50 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     });
   }, [me]);
 
+  const blockUser = useCallback(async (targetId: string): Promise<{ error?: string }> => {
+    if (blocked('Sign in to block someone.')) return {};
+    // Drop them from the local view immediately, whatever the backend does next.
+    setConversations((prev) => prev.filter((c) => c.user.id !== targetId));
+    setFriends((prev) => prev.filter((f) => f.id !== targetId));
+    setFriendRequests((prev) => prev.filter((r) => r.id !== targetId));
+    const db = supabaseBrowser();
+    if (db && me) return social.blockUserRemote(db, me.id, targetId);
+    return {};
+  }, [me, blocked]);
+
+  const unblockUser = useCallback(async (targetId: string): Promise<void> => {
+    const db = supabaseBrowser();
+    if (db && me) await social.unblockUserRemote(db, me.id, targetId);
+  }, [me]);
+
+  const listBlocked = useCallback(async (): Promise<Profile[]> => {
+    const db = supabaseBrowser();
+    if (db && me) return social.fetchMyBlocks(db, me.id);
+    return [];
+  }, [me]);
+
+  const deleteAccount = useCallback(async (): Promise<{ error?: string }> => {
+    const db = supabaseBrowser();
+    if (!db) return { error: 'Not available in demo mode.' };
+    const { data } = await db.auth.getSession();
+    const token = data.session?.access_token;
+    if (!token) return { error: 'Your session has expired. Sign in again and retry.' };
+
+    try {
+      const res = await fetch('/api/account/delete', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const body = await res.json();
+      if (!res.ok) return { error: body?.error ?? 'Could not delete the account.' };
+    } catch {
+      return { error: 'Could not reach the server. Try again.' };
+    }
+
+    await db.auth.signOut();
+    return {};
+  }, []);
+
   const unreadCount = conversations.reduce((n, c) => n + c.unread, 0) + friendRequests.length;
 
   const value: SessionAPI = {
@@ -369,6 +417,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     signInWithEmail, signOut, completeOnboarding, setInterests, toggleSource, toggleSave, toggleLike,
     sendFriendRequest, acceptFriend, declineFriend, shareToFriend,
     loadThread, sendMessage, markConversationRead,
+    blockUser, unblockUser, listBlocked, deleteAccount,
     addComment, likeComment, ensureComments,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

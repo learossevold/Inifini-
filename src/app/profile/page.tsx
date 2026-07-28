@@ -8,6 +8,7 @@ import { MOCK_STORIES } from '@/lib/mock-data';
 import { RSS_SOURCES } from '@/config/sources';
 import { Avatar, categoryLabel, timeAgo } from '@/components/ui';
 import NotificationToggle from '@/components/NotificationToggle';
+import AccountSettings from '@/components/AccountSettings';
 
 export default function ProfilePage() {
   const { me, interests, setInterests, followedSources, toggleSource, saves, friends, configured, canAct, promptSignIn, signOut } = useSession();
@@ -116,6 +117,8 @@ export default function ProfilePage() {
       <section className="mt-8 rule-t pt-5 text-[14px]">
         <Link href="/friends" className="block py-2.5">Friends &amp; requests</Link>
         <Link href="/about" className="block py-2.5">About, sources &amp; editorial note</Link>
+        <Link href="/privacy" className="block py-2.5">Privacy policy</Link>
+        <Link href="/terms" className="block py-2.5">Terms of use</Link>
         <Link href="/admin" className="block py-2.5">Admin</Link>
         {configured && canAct && (
           <button onClick={() => signOut()} className="block w-full py-2.5 text-left text-accent">Sign out</button>
@@ -124,6 +127,8 @@ export default function ProfilePage() {
           <p className="mt-4 text-[12px] text-muted">Demo account. With Supabase connected, sign-in uses a magic link sent to your email — no password to remember.</p>
         )}
       </section>
+
+      <AccountSettings />
     </main>
   );
 }

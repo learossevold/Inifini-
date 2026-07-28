@@ -133,6 +133,18 @@ create table if not exists shared_stories (
   read boolean not null default false
 );
 
+-- ---------- BLOCKS ----------
+-- One-directional: blocking someone hides them from you and stops messages
+-- in BOTH directions (enforced in the messages insert policy below).
+create table if not exists blocks (
+  blocker_id uuid not null references auth.users(id) on delete cascade,
+  blocked_id uuid not null references auth.users(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (blocker_id, blocked_id),
+  constraint no_self_block check (blocker_id <> blocked_id)
+);
+create index if not exists blocks_blocked_idx on blocks (blocked_id);
+
 -- ---------- PUSH SUBSCRIPTIONS ----------
 -- One row per browser/device that opted in to notifications. `user_id` is
 -- nullable so signed-out readers can still get the morning brief.
@@ -202,6 +214,7 @@ alter table user_sources enable row level security;
 alter table friendships enable row level security;
 alter table shared_stories enable row level security;
 alter table messages enable row level security;
+alter table blocks enable row level security;
 alter table push_subscriptions enable row level security;
 alter table story_saves enable row level security;
 alter table story_likes enable row level security;
@@ -239,11 +252,25 @@ create policy "mark share read" on shared_stories for update using (auth.uid() =
 -- /api/push/* with the service role key, so the anon key can never enumerate
 -- or delete other people's devices.
 
--- Direct messages: only the two people in the conversation
+-- Blocks: you manage your own list, and can see who has blocked you only
+-- insofar as the policies below act on it.
+drop policy if exists "manage own blocks" on blocks;
+create policy "manage own blocks" on blocks for all using (auth.uid() = blocker_id) with check (auth.uid() = blocker_id);
+
+-- Direct messages: only the two people in the conversation. Sending is
+-- refused in BOTH directions once either side has blocked the other —
+-- enforced here so the rule holds no matter what the client does.
 drop policy if exists "read own messages" on messages;
 create policy "read own messages" on messages for select using (auth.uid() = sender_id or auth.uid() = recipient_id);
 drop policy if exists "send message" on messages;
-create policy "send message" on messages for insert with check (auth.uid() = sender_id);
+create policy "send message" on messages for insert with check (
+  auth.uid() = sender_id
+  and not exists (
+    select 1 from blocks b
+    where (b.blocker_id = recipient_id and b.blocked_id = auth.uid())
+       or (b.blocker_id = auth.uid() and b.blocked_id = recipient_id)
+  )
+);
 drop policy if exists "mark message read" on messages;
 create policy "mark message read" on messages for update using (auth.uid() = recipient_id);
 

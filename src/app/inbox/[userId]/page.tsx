@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { useEffect, useRef, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { Message, Profile } from '@/lib/types';
 import { useSession } from '@/lib/session';
 import { Avatar, timeAgo } from '@/components/ui';
@@ -38,13 +38,16 @@ function StoryBubble({ message, mine }: { message: Message; mine: boolean }) {
 
 export default function ThreadPage() {
   const params = useParams();
+  const router = useRouter();
   const userId = String(params.userId);
-  const { me, friends, conversations, loadThread, sendMessage, markConversationRead } = useSession();
+  const { me, friends, conversations, loadThread, sendMessage, markConversationRead, blockUser } = useSession();
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [confirmBlock, setConfirmBlock] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
   const myId = me?.id ?? 'me';
@@ -90,7 +93,7 @@ export default function ThreadPage() {
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
         </Link>
         {partner ? (
-          <span className="flex min-w-0 items-center gap-2.5">
+          <span className="flex min-w-0 flex-1 items-center gap-2.5">
             <Avatar name={partner.display_name || partner.username} size={34} />
             <span className="min-w-0">
               <span className="block truncate text-[15px] font-semibold leading-tight">{partner.display_name || partner.username}</span>
@@ -98,9 +101,51 @@ export default function ThreadPage() {
             </span>
           </span>
         ) : (
-          <span className="text-[15px] font-semibold">Conversation</span>
+          <span className="flex-1 text-[15px] font-semibold">Conversation</span>
         )}
+
+        <button
+          onClick={() => setMenuOpen((v) => !v)}
+          aria-label="Conversation options"
+          aria-expanded={menuOpen}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-ink"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="12" cy="19" r="1.7" /></svg>
+        </button>
       </header>
+
+      {menuOpen && (
+        <div className="border-b border-rule bg-paper px-3 py-2">
+          <button
+            onClick={() => { setMenuOpen(false); setConfirmBlock(true); }}
+            className="w-full rounded-lg px-3 py-2.5 text-left text-[14px] font-medium text-accent active:bg-accentSoft"
+          >
+            Block {partner ? (partner.display_name || partner.username) : 'this person'}
+          </button>
+        </div>
+      )}
+
+      {confirmBlock && (
+        <div className="fixed inset-0 z-[70] flex items-end" role="dialog" aria-modal="true" aria-label="Block this person">
+          <button className="absolute inset-0 bg-ink/50" onClick={() => setConfirmBlock(false)} aria-label="Cancel" />
+          <div className="relative w-full rounded-t-2xl bg-paper px-5 pb-9 pt-3 animate-fadeUp">
+            <div className="mx-auto mb-5 h-1 w-10 rounded-full bg-rule" />
+            <h2 className="font-serif text-[22px] font-bold">
+              Block {partner ? (partner.display_name || partner.username) : 'this person'}?
+            </h2>
+            <p className="mt-2 text-[14px] text-muted">
+              They won&rsquo;t be able to message you, and you won&rsquo;t see each other&rsquo;s comments. You&rsquo;ll stop being friends. You can undo this from your profile.
+            </p>
+            <button
+              onClick={async () => { await blockUser(userId); router.push('/inbox'); }}
+              className="mt-5 w-full rounded-lg bg-accent py-3.5 font-semibold text-paper"
+            >
+              Block
+            </button>
+            <button onClick={() => setConfirmBlock(false)} className="mt-2 w-full py-2.5 text-[14px] font-medium text-muted">Cancel</button>
+          </div>
+        </div>
+      )}
 
       <div className="flex-1 px-4 py-4">
         {loading ? (

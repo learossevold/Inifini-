@@ -27,13 +27,15 @@ export async function fetchProfilesByIds(db: SupabaseClient, ids: string[]): Pro
 export async function searchProfiles(db: SupabaseClient, query: string, excludeId: string): Promise<Profile[]> {
   const q = query.trim().replace(/[%,]/g, '');
   if (!q) return [];
-  const { data } = await db
-    .from('profiles')
-    .select(PROFILE_COLS)
-    .neq('id', excludeId)
-    .or(`username.ilike.%${q}%,display_name.ilike.%${q}%`)
-    .limit(20);
-  return (data as Profile[]) ?? [];
+  const [{ data }, blocked] = await Promise.all([
+    db.from('profiles')
+      .select(PROFILE_COLS)
+      .neq('id', excludeId)
+      .or(`username.ilike.%${q}%,display_name.ilike.%${q}%`)
+      .limit(20),
+    fetchBlockedIds(db, excludeId),
+  ]);
+  return ((data as Profile[]) ?? []).filter((p) => !blocked.has(p.id));
 }
 
 async function fetchStoriesByIds(db: SupabaseClient, ids: string[]): Promise<Record<string, Story>> {
@@ -118,6 +120,41 @@ export async function declineFriendRemote(db: SupabaseClient, myId: string, othe
   await db.from('friendships').delete().eq('user_id_1', otherId).eq('user_id_2', myId).eq('status', 'pending');
 }
 
+// ---------- Blocks ----------
+
+/** Everyone I've blocked, plus everyone who has blocked me — both are hidden from me. */
+export async function fetchBlockedIds(db: SupabaseClient, myId: string): Promise<Set<string>> {
+  const [mine, theirs] = await Promise.all([
+    db.from('blocks').select('blocked_id').eq('blocker_id', myId),
+    db.from('blocks').select('blocker_id').eq('blocked_id', myId),
+  ]);
+  const ids = new Set<string>();
+  for (const r of ((mine.data as { blocked_id: string }[]) ?? [])) ids.add(r.blocked_id);
+  for (const r of ((theirs.data as { blocker_id: string }[]) ?? [])) ids.add(r.blocker_id);
+  return ids;
+}
+
+export async function blockUserRemote(db: SupabaseClient, myId: string, targetId: string): Promise<{ error?: string }> {
+  const { error } = await db.from('blocks').upsert({ blocker_id: myId, blocked_id: targetId }, { onConflict: 'blocker_id,blocked_id' });
+  if (error) return { error: error.message };
+  // A block ends the friendship too — otherwise they'd still appear in your list.
+  await db.from('friendships').delete()
+    .or(`and(user_id_1.eq.${myId},user_id_2.eq.${targetId}),and(user_id_1.eq.${targetId},user_id_2.eq.${myId})`);
+  return {};
+}
+
+export async function unblockUserRemote(db: SupabaseClient, myId: string, targetId: string): Promise<void> {
+  await db.from('blocks').delete().eq('blocker_id', myId).eq('blocked_id', targetId);
+}
+
+/** Only the people I blocked myself — the list I can undo. */
+export async function fetchMyBlocks(db: SupabaseClient, myId: string): Promise<Profile[]> {
+  const { data } = await db.from('blocks').select('blocked_id').eq('blocker_id', myId);
+  const ids = ((data as { blocked_id: string }[]) ?? []).map((r) => r.blocked_id);
+  const profiles = await fetchProfilesByIds(db, ids);
+  return ids.map((id) => profiles[id]).filter(Boolean);
+}
+
 // ---------- Direct messages ----------
 // Sharing a story to a friend is a message with `story_id` set, so shares and
 // chat live in the same conversation (superseding the old shared_stories table).
@@ -128,12 +165,14 @@ export async function declineFriendRemote(db: SupabaseClient, myId: string, othe
  * and it avoids a round trip per conversation.
  */
 export async function fetchConversations(db: SupabaseClient, myId: string): Promise<Conversation[]> {
-  const { data } = await db
-    .from('messages')
-    .select('*')
-    .or(`sender_id.eq.${myId},recipient_id.eq.${myId}`)
-    .order('created_at', { ascending: false })
-    .limit(400);
+  const [{ data }, blocked] = await Promise.all([
+    db.from('messages')
+      .select('*')
+      .or(`sender_id.eq.${myId},recipient_id.eq.${myId}`)
+      .order('created_at', { ascending: false })
+      .limit(400),
+    fetchBlockedIds(db, myId),
+  ]);
   const rows = (data as Message[]) ?? [];
   if (rows.length === 0) return [];
 
@@ -141,6 +180,7 @@ export async function fetchConversations(db: SupabaseClient, myId: string): Prom
   const unreadByPartner = new Map<string, number>();
   for (const m of rows) {
     const partner = m.sender_id === myId ? m.recipient_id : m.sender_id;
+    if (blocked.has(partner)) continue;
     if (!latestByPartner.has(partner)) latestByPartner.set(partner, m); // rows are newest-first
     if (m.recipient_id === myId && !m.read) unreadByPartner.set(partner, (unreadByPartner.get(partner) ?? 0) + 1);
   }
@@ -219,8 +259,12 @@ export async function setLikeRemote(db: SupabaseClient, myId: string, storyId: s
 // ---------- Comments ----------
 
 export async function fetchComments(db: SupabaseClient, storyId: string, myId: string): Promise<Comment[]> {
-  const { data } = await db.from('comments').select('*').eq('story_id', storyId).eq('hidden', false).order('created_at', { ascending: true });
-  const list = (data as any[]) ?? [];
+  const [{ data }, blocked] = await Promise.all([
+    db.from('comments').select('*').eq('story_id', storyId).eq('hidden', false).order('created_at', { ascending: true }),
+    fetchBlockedIds(db, myId),
+  ]);
+  // Comments from (or to) someone either side has blocked never render.
+  const list = ((data as any[]) ?? []).filter((c) => !blocked.has(c.user_id));
   const ids = list.map((c) => c.id);
   const [profiles, likeRows] = await Promise.all([
     fetchProfilesByIds(db, Array.from(new Set(list.map((c) => c.user_id)))),
