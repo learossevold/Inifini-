@@ -25,6 +25,7 @@ interface SessionState {
   me: Profile | null;
   onboarded: boolean;
   interests: Category[];
+  followedSources: Set<string>;
   saves: Set<string>;
   likes: Set<string>;
   friends: Profile[];
@@ -41,6 +42,7 @@ interface SessionAPI extends SessionState {
   signOut: () => Promise<void>;
   completeOnboarding: (username: string, interests: Category[]) => Promise<{ error?: string }>;
   setInterests: (c: Category[]) => void;
+  toggleSource: (domain: string) => void;
   toggleSave: (storyId: string) => void;
   toggleLike: (storyId: string) => void;
   sendFriendRequest: (targetId: string) => Promise<{ error?: string }>;
@@ -64,6 +66,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>(configured ? 'loading' : 'ready');
   const [onboarded, setOnboarded] = useState(!configured);
   const [interests, setInterestsState] = useState<Category[]>(['norway', 'world', 'ai', 'local']);
+  const [followedSources, setFollowedSources] = useState<Set<string>>(new Set());
   const [saves, setSaves] = useState<Set<string>>(new Set());
   const [likes, setLikes] = useState<Set<string>>(configured ? new Set() : new Set(['demo-2']));
   const [friends, setFriends] = useState<Profile[]>(configured ? [] : MOCK_FRIENDS);
@@ -94,14 +97,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      const [ints, fr, inboxRows, sl] = await Promise.all([
+      const [ints, srcs, fr, inboxRows, sl] = await Promise.all([
         social.fetchInterests(db, uid),
+        social.fetchFollowedSources(db, uid),
         social.fetchFriendsAndRequests(db, uid),
         social.fetchInbox(db, uid),
         social.fetchSavesLikes(db, uid),
       ]);
       if (cancelled) return;
       setInterestsState(ints);
+      setFollowedSources(new Set(srcs));
       setFriends(fr.friends);
       setFriendRequests(fr.requests);
       setInbox(inboxRows);
@@ -163,6 +168,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     const db = supabaseBrowser();
     if (db && me) social.saveInterests(db, me.id, c);
   }, [me]);
+
+  const toggleSource = useCallback((domain: string) => {
+    const next = new Set(followedSources);
+    next.has(domain) ? next.delete(domain) : next.add(domain);
+    setFollowedSources(next);
+    const db = supabaseBrowser();
+    if (db && me) social.saveFollowedSources(db, me.id, Array.from(next));
+  }, [followedSources, me]);
 
   const toggleSave = useCallback((storyId: string) => {
     const wasSaved = saves.has(storyId);
@@ -259,9 +272,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const unreadCount = inbox.filter((s) => !s.read).length + friendRequests.length;
 
   const value: SessionAPI = {
-    me, onboarded, interests, saves, likes, friends, friendRequests, inbox, commentsByStory,
+    me, onboarded, interests, followedSources, saves, likes, friends, friendRequests, inbox, commentsByStory,
     configured, status, unreadCount,
-    signInWithEmail, signOut, completeOnboarding, setInterests, toggleSave, toggleLike,
+    signInWithEmail, signOut, completeOnboarding, setInterests, toggleSource, toggleSave, toggleLike,
     sendFriendRequest, acceptFriend, declineFriend, markInboxRead, shareToFriend,
     addComment, likeComment, ensureComments,
   };

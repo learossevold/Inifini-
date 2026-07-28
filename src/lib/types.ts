@@ -24,6 +24,7 @@ export const CATEGORIES: { id: Category; label: string; priority: number }[] = [
 ];
 
 export type VideoStatus = 'none' | 'queued' | 'ready' | 'failed';
+export type AudioStatus = 'none' | 'queued' | 'ready' | 'failed';
 
 export interface Story {
   id: string;
@@ -54,6 +55,10 @@ export interface Story {
   video_url: string | null;
   video_status: VideoStatus;
   video_duration_seconds: number | null;
+  // Watch tab — AI narration audio (never fabricated footage, see editorial note)
+  audio_url: string | null;
+  audio_status: AudioStatus;
+  audio_duration_seconds: number | null;
   // Engagement (denormalized totals for display)
   like_count: number;
   comment_count: number;

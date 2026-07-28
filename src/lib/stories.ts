@@ -5,7 +5,7 @@ import { Category, FeedResponse, Story } from './types';
 
 const PAGE_SIZE = 9;
 
-export async function getFeed(page: number, interests: Category[], onlyInterests: boolean): Promise<FeedResponse> {
+export async function getFeed(page: number, interests: Category[], onlyInterests: boolean, followedSources: string[] = []): Promise<FeedResponse> {
   const db = supabasePublic();
   let real: Story[] = [];
   if (db) {
@@ -17,6 +17,9 @@ export async function getFeed(page: number, interests: Category[], onlyInterests
         video_url: null,
         video_status: 'none',
         video_duration_seconds: null,
+        audio_url: null,
+        audio_status: 'none',
+        audio_duration_seconds: null,
         ...s,
         ai_key_points: Array.isArray(s.ai_key_points) ? s.ai_key_points : [],
       })) as Story[];
@@ -25,7 +28,7 @@ export async function getFeed(page: number, interests: Category[], onlyInterests
 
   const mode: 'live' | 'mock' = real.length > 0 ? 'live' : 'mock';
   const pool = real.length > 0 ? real : MOCK_STORIES;
-  const ranked = rankStories(pool, interests, onlyInterests);
+  const ranked = rankStories(pool, interests, onlyInterests, followedSources);
 
   const start = page * PAGE_SIZE;
   const stories = ranked.slice(start, start + PAGE_SIZE);
@@ -33,7 +36,7 @@ export async function getFeed(page: number, interests: Category[], onlyInterests
   // Only pad with demo stories when there is no real data at all. In live mode
   // we never mix fake content into a real feed (see design rules).
   if (mode === 'mock' && stories.length < PAGE_SIZE) {
-    const fillerPool = rankStories(MOCK_STORIES, interests, onlyInterests);
+    const fillerPool = rankStories(MOCK_STORIES, interests, onlyInterests, followedSources);
     const filler = mockPage(page, fillerPool.length ? fillerPool : MOCK_STORIES);
     const seen = new Set(stories.map((s) => s.id));
     for (const f of filler) {

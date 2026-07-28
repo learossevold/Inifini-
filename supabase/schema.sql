@@ -48,9 +48,15 @@ create table if not exists stories (
   video_url text,
   video_status text not null default 'none' check (video_status in ('none','queued','ready','failed')),
   video_duration_seconds int,
+  audio_url text,
+  audio_status text not null default 'none' check (audio_status in ('none','queued','ready','failed')),
+  audio_duration_seconds int,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+alter table stories add column if not exists audio_url text;
+alter table stories add column if not exists audio_status text not null default 'none';
+alter table stories add column if not exists audio_duration_seconds int;
 create index if not exists stories_published_at_idx on stories (published_at desc);
 create index if not exists stories_category_idx on stories (category);
 create unique index if not exists stories_slug_idx on stories (slug);
@@ -87,6 +93,13 @@ create table if not exists user_interests (
   user_id uuid references auth.users(id) on delete cascade,
   category text not null,
   primary key (user_id, category)
+);
+
+-- ---------- FOLLOWED SOURCES ----------
+create table if not exists user_sources (
+  user_id uuid references auth.users(id) on delete cascade,
+  source_domain text not null,
+  primary key (user_id, source_domain)
 );
 
 -- ---------- FRIENDSHIPS (mutual) ----------
@@ -146,6 +159,7 @@ alter table stories enable row level security;
 alter table sources enable row level security;
 alter table profiles enable row level security;
 alter table user_interests enable row level security;
+alter table user_sources enable row level security;
 alter table friendships enable row level security;
 alter table shared_stories enable row level security;
 alter table story_saves enable row level security;
@@ -164,6 +178,9 @@ create policy "update own profile" on profiles for update using (auth.uid() = id
 
 -- Interests: owner only
 create policy "manage own interests" on user_interests for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- Followed sources: owner only
+create policy "manage own sources" on user_sources for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 -- Friendships: visible to the two users involved; either can create/update
 create policy "see own friendships" on friendships for select using (auth.uid() = user_id_1 or auth.uid() = user_id_2);

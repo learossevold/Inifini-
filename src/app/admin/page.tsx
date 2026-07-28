@@ -20,6 +20,8 @@ export default function AdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [ingesting, setIngesting] = useState(false);
   const [ingestResult, setIngestResult] = useState<string | null>(null);
+  const [narrating, setNarrating] = useState(false);
+  const [narrateResult, setNarrateResult] = useState<string | null>(null);
 
   const loadStats = useCallback(async (pw: string) => {
     setError(null);
@@ -64,6 +66,24 @@ export default function AdminPage() {
       setIngestResult('Ingestion request failed.');
     } finally {
       setIngesting(false);
+    }
+  };
+
+  const triggerNarration = async () => {
+    setNarrating(true);
+    setNarrateResult(null);
+    try {
+      const res = await fetch('/api/ingest/narrate', { method: 'POST', headers: { 'x-admin-password': password } });
+      const data = await res.json();
+      setNarrateResult(
+        res.ok
+          ? data.message ?? `Narrated ${data.narrated}/${data.total}, ${data.failed} failed.`
+          : `Failed: ${data.error}`
+      );
+    } catch {
+      setNarrateResult('Narration request failed.');
+    } finally {
+      setNarrating(false);
     }
   };
 
@@ -121,6 +141,15 @@ export default function AdminPage() {
             {ingesting ? 'Ingesting… (fetching feeds + generating summaries)' : 'Run ingestion now'}
           </button>
           {ingestResult && <p className="mt-3 rounded-md bg-accentSoft px-3 py-2">{ingestResult}</p>}
+
+          <button
+            onClick={triggerNarration}
+            disabled={narrating}
+            className="mt-3 w-full rounded-md border border-ink bg-white py-3 font-medium text-ink disabled:opacity-60"
+          >
+            {narrating ? 'Narrating… (generating Watch audio)' : 'Generate Watch narration'}
+          </button>
+          {narrateResult && <p className="mt-3 rounded-md bg-accentSoft px-3 py-2">{narrateResult}</p>}
 
           <h2 className="mt-8 font-serif text-lg font-bold">Source status</h2>
           <div className="mt-3 space-y-2">

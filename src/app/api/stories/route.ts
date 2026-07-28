@@ -10,8 +10,9 @@ export async function GET(req: NextRequest) {
     const page = Math.max(0, parseInt(searchParams.get('page') ?? '0', 10) || 0);
     const tab = searchParams.get('tab') ?? 'news';
     const interests = (searchParams.get('interests') ?? '').split(',').filter(Boolean) as Category[];
+    const sources = (searchParams.get('sources') ?? '').split(',').filter(Boolean);
     const onlyInterests = tab === 'following';
-    const feed = await getFeed(page, interests, onlyInterests);
+    const feed = await getFeed(page, interests, onlyInterests, sources);
     return NextResponse.json(feed, { headers: { 'cache-control': 's-maxage=60, stale-while-revalidate=300' } });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message ?? 'Feed unavailable' }, { status: 500 });

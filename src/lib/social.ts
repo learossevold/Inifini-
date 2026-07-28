@@ -43,6 +43,7 @@ async function fetchStoriesByIds(db: SupabaseClient, ids: string[]): Promise<Rec
   for (const s of (data as any[]) ?? []) {
     out[s.id] = {
       like_count: 0, comment_count: 0, video_url: null, video_status: 'none', video_duration_seconds: null,
+      audio_url: null, audio_status: 'none', audio_duration_seconds: null,
       ...s, ai_key_points: Array.isArray(s.ai_key_points) ? s.ai_key_points : [],
     } as Story;
   }
@@ -60,6 +61,18 @@ export async function saveInterests(db: SupabaseClient, userId: string, categori
   await db.from('user_interests').delete().eq('user_id', userId);
   if (categories.length > 0) {
     await db.from('user_interests').insert(categories.map((category) => ({ user_id: userId, category })));
+  }
+}
+
+export async function fetchFollowedSources(db: SupabaseClient, userId: string): Promise<string[]> {
+  const { data } = await db.from('user_sources').select('source_domain').eq('user_id', userId);
+  return ((data as { source_domain: string }[]) ?? []).map((r) => r.source_domain);
+}
+
+export async function saveFollowedSources(db: SupabaseClient, userId: string, domains: string[]): Promise<void> {
+  await db.from('user_sources').delete().eq('user_id', userId);
+  if (domains.length > 0) {
+    await db.from('user_sources').insert(domains.map((source_domain) => ({ user_id: userId, source_domain })));
   }
 }
 

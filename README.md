@@ -39,7 +39,7 @@ Copy `.env.example` to `.env.local` and fill in what you have:
 | `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | optional | Database + auth. Without them, the app runs on mock data. |
 | `SUPABASE_SERVICE_ROLE_KEY` | optional | Server-only write key for ingestion. |
 | `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` | optional | Real AI summaries. Checked Anthropic-first. |
-| `OPENAI_API_KEY_TTS` | optional | Reserved for Watch-tab narration audio. Without it, Watch uses silent caption cards. |
+| `OPENAI_API_KEY_TTS` | optional | Powers Watch-tab AI narration audio. Without it, Watch uses silent caption cards. Needs a Supabase Storage bucket, which `/api/ingest/narrate` creates automatically on first run. |
 
 ## 5. Set up Supabase
 
@@ -52,19 +52,19 @@ Copy `.env.example` to `.env.local` and fill in what you have:
 
 With Supabase configured: open `/admin`, enter `ADMIN_PASSWORD`, click **Run ingestion now**. It pulls the RSS feeds in `src/config/sources.ts` (titles/excerpts/links only — never full articles, all credited and linked), dedupes, generates AI (or mock) summaries, scores them, and stores them. Edit that one file to add/remove sources.
 
+With `OPENAI_API_KEY_TTS` also set, click **Generate Watch narration** on the same page (or wait for its daily cron) to read the newest stories' summaries aloud for the Watch tab — a real voice over the story's own photo, never fabricated video.
+
 ## 7. Deploy to Vercel
 
 Push to GitHub → import at vercel.com/new → add the environment variables under Settings → redeploy. Vercel-ready, no extra config.
 
 ## 8. What's working / what needs improvement
 
-**Working:** all three feed tabs, infinite scroll, inline article view (feed continues below), saving/liking, threaded comments with word-filter, mutual friend requests, sharing to a friend, notifications inbox, search, profile with editable interests, onboarding, admin ingestion, full mock mode.
+**Working:** all three feed tabs, infinite scroll, inline article view (feed continues below), saving/liking, threaded comments with word-filter, mutual friend requests, sharing to a friend, notifications inbox, search, profile with editable interests and followed sources, onboarding, admin ingestion, real magic-link auth + a fully Supabase-backed social layer (friends/comments/shares/saves/likes), Watch-tab AI narration audio (with `OPENAI_API_KEY_TTS` set), full mock mode with zero keys.
 
 **Needs improvement / next:**
-- The social layer runs in-memory in demo mode. Wiring the `session` methods to real Supabase calls is the main step to make friends/comments/shares persist across users.
-- Watch-tab narration audio is stubbed (caption cards). Add a TTS step in ingestion to populate `video_url`.
-- Magic-link auth UI is described but uses the mock user until Supabase Auth is connected.
-- Real-time comment updates would need Supabase subscriptions.
+- Real-time comment updates would need Supabase subscriptions (currently loads once per story open).
+- Watch narration currently runs once daily via cron, or on demand from `/admin` — a paid Vercel plan lets you tighten `vercel.json`'s `/api/ingest/narrate` schedule to run more often.
 
 ## 9. Test checklist (do these on a phone)
 

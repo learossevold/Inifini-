@@ -5,12 +5,14 @@ import { useState } from 'react';
 import { CATEGORIES, Category } from '@/lib/types';
 import { useSession } from '@/lib/session';
 import { MOCK_STORIES } from '@/lib/mock-data';
+import { RSS_SOURCES } from '@/config/sources';
 import { Avatar, categoryLabel, timeAgo } from '@/components/ui';
 
 export default function ProfilePage() {
-  const { me, interests, setInterests, saves, friends, configured, signOut } = useSession();
+  const { me, interests, setInterests, followedSources, toggleSource, saves, friends, configured, signOut } = useSession();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Category[]>(interests);
+  const [editingSources, setEditingSources] = useState(false);
 
   const toggle = (c: Category) => setDraft((prev) => prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]);
   const save = () => { setInterests(draft); setEditing(false); };
@@ -47,6 +49,29 @@ export default function ProfilePage() {
             {CATEGORIES.filter((c) => c.id !== 'top').map((c) => {
               const on = draft.includes(c.id);
               return <button key={c.id} onClick={() => toggle(c.id)} className={`rounded-full border px-3.5 py-1.5 text-[13px] ${on ? 'border-accent bg-accentSoft font-semibold text-accent' : 'border-rule'}`}>{c.label}</button>;
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* Sources */}
+      <section className="mt-8">
+        <div className="flex items-center justify-between">
+          <h2 className="font-sans text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">Sources you follow</h2>
+          <button onClick={() => setEditingSources((v) => !v)} className="text-[13px] font-semibold text-accent">{editingSources ? 'Done' : 'Edit'}</button>
+        </div>
+        {!editingSources ? (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {followedSources.size === 0 && <p className="text-[14px] text-muted">Not following any specific sources — you&rsquo;ll still see everything by topic.</p>}
+            {Array.from(new Map(RSS_SOURCES.map((s) => [s.domain, s])).values())
+              .filter((s) => followedSources.has(s.domain))
+              .map((s) => <span key={s.domain} className="rounded-full bg-accentSoft px-3 py-1.5 text-[13px] font-medium text-accent">{s.name}</span>)}
+          </div>
+        ) : (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {Array.from(new Map(RSS_SOURCES.map((s) => [s.domain, s])).values()).map((s) => {
+              const on = followedSources.has(s.domain);
+              return <button key={s.domain} onClick={() => toggleSource(s.domain)} className={`rounded-full border px-3.5 py-1.5 text-[13px] ${on ? 'border-accent bg-accentSoft font-semibold text-accent' : 'border-rule'}`}>{s.name}</button>;
             })}
           </div>
         )}

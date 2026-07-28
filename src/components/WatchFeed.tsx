@@ -101,10 +101,21 @@ function CommentSheet({ story, onClose }: { story: Story; onClose: () => void })
  * throughout: between cards and after an expanded article.
  */
 
-function WatchCard({ story, active, onOpen }: { story: Story; active: boolean; onOpen: () => void }) {
+function WatchCard({
+  story, active, onOpen, muted, onToggleMute,
+}: {
+  story: Story;
+  active: boolean;
+  onOpen: () => void;
+  muted: boolean;
+  onToggleMute: () => void;
+}) {
   const [imgFailed, setImgFailed] = useState(false);
   const [captionIdx, setCaptionIdx] = useState(0);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
+
+  const hasAudio = story.audio_status === 'ready' && Boolean(story.audio_url);
 
   // Split the summary into short caption chunks
   const chunks = story.ai_short_summary
@@ -116,12 +127,26 @@ function WatchCard({ story, active, onOpen }: { story: Story; active: boolean; o
       return acc;
     }, []);
 
+  // Caption timing: synced to the real narration audio when available,
+  // otherwise a fixed interval (silent caption cards).
   useEffect(() => {
     if (!active) { setCaptionIdx(0); return; }
     if (chunks.length === 0) return;
+
+    if (hasAudio) {
+      const a = audioRef.current;
+      if (!a) return;
+      const onTimeUpdate = () => {
+        if (!a.duration) return;
+        setCaptionIdx(Math.min(chunks.length - 1, Math.floor((a.currentTime / a.duration) * chunks.length)));
+      };
+      a.addEventListener('timeupdate', onTimeUpdate);
+      return () => a.removeEventListener('timeupdate', onTimeUpdate);
+    }
+
     const id = setInterval(() => setCaptionIdx((i) => (i + 1) % chunks.length), 2600);
     return () => clearInterval(id);
-  }, [active, chunks.length]);
+  }, [active, chunks.length, hasAudio]);
 
   useEffect(() => {
     const v = videoRef.current;
@@ -129,6 +154,18 @@ function WatchCard({ story, active, onOpen }: { story: Story; active: boolean; o
     if (active) v.play().catch(() => {});
     else { v.pause(); v.currentTime = 0; }
   }, [active]);
+
+  useEffect(() => {
+    const a = audioRef.current;
+    if (!a || !hasAudio) return;
+    if (active) { a.currentTime = 0; a.play().catch(() => {}); }
+    else { a.pause(); a.currentTime = 0; }
+  }, [active, hasAudio]);
+
+  useEffect(() => {
+    const a = audioRef.current;
+    if (a) a.muted = muted;
+  }, [muted]);
 
   const hasVideo = story.video_status === 'ready' && story.video_url;
   const showImage = story.image_url && !imgFailed;
@@ -154,11 +191,27 @@ function WatchCard({ story, active, onOpen }: { story: Story; active: boolean; o
       )}
       <div className="absolute inset-0 bg-gradient-to-t from-night via-night/30 to-night/60" aria-hidden />
 
+      {hasAudio && <audio ref={audioRef} src={story.audio_url!} preload={active ? 'auto' : 'none'} />}
+
       {/* Category + live tag */}
       <div className="absolute left-4 top-4 flex items-center gap-2">
         <span className="rounded-full bg-white/15 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider backdrop-blur-sm">{categoryLabel(story.category)}</span>
         {!hasVideo && <span className="rounded-full bg-white/10 px-2.5 py-1 text-[10px] uppercase tracking-wider text-white/70 backdrop-blur-sm">AI narration</span>}
       </div>
+
+      {hasAudio && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onToggleMute(); }}
+          aria-label={muted ? 'Unmute narration' : 'Mute narration'}
+          className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full bg-white/15 backdrop-blur-sm"
+        >
+          {muted ? (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z" /><line x1="23" y1="9" x2="17" y2="15" /><line x1="17" y1="9" x2="23" y2="15" /></svg>
+          ) : (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z" /><path d="M15.5 8.5a5 5 0 0 1 0 7" /><path d="M18.5 5.5a9 9 0 0 1 0 13" /></svg>
+          )}
+        </button>
+      )}
 
       {/* Headline + animated captions */}
       <div className="absolute inset-x-0 bottom-0 p-5 pb-8">
@@ -262,6 +315,7 @@ export default function WatchFeed({
   const [activeIdx, setActiveIdx] = useState(0);
   const [openId, setOpenId] = useState<string | null>(null);
   const [commentStory, setCommentStory] = useState<Story | null>(null);
+  const [muted, setMuted] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const scrollItemToTop = useCallback((id: string) => {
@@ -309,7 +363,7 @@ export default function WatchFeed({
               <WatchArticle story={s} onClose={() => close(s)} onShare={() => onShare(s)} />
             ) : (
               <>
-                <WatchCard story={s} active={i === activeIdx} onOpen={() => open(s)} />
+                <WatchCard story={s} active={i === activeIdx} onOpen={() => open(s)} muted={muted} onToggleMute={() => setMuted((m) => !m)} />
                 {/* Right-side vertical engagement rail */}
                 <div className="absolute bottom-32 right-3 z-10">
                   <EngagementBar story={s} vertical dark onComment={() => setCommentStory(s)} onShare={() => onShare(s)} />
