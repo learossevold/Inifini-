@@ -344,6 +344,8 @@ export default function WatchFeed({
   const [muted, setMuted] = useState(true);
   const { recordView } = useSession();
   const containerRef = useRef<HTMLDivElement>(null);
+  const articleRef = useRef<HTMLDivElement>(null);
+  const touchStartY = useRef<number | null>(null);
 
   // An article used to open inline, inside the snapping feed. Because it was
   // several screens tall it became a snap point of its own, so scrolling back
@@ -361,6 +363,43 @@ export default function WatchFeed({
   const close = useCallback(() => setOpenId(null), []);
 
   const openStory = openId ? stories.find((s) => s.id === openId) ?? null : null;
+
+  // Moving the article to its own layer fixed the jump-to-top bug, but it also
+  // cut it off from the feed's swipe-to-browse gesture: scrolling inside it
+  // just scrolls the article's own text, with no way back into the card feed
+  // short of tapping the close button. This restores "keep scrolling" at the
+  // article's own edges: a swipe that continues past the very top or very
+  // bottom of the text closes the article and lands on the neighbouring card,
+  // the same direction a plain flick would have taken you in the feed. A
+  // swipe that doesn't reach an edge, or has nowhere further to go, just
+  // scrolls the article like normal — nothing else about reading changes.
+  const goToNeighbour = useCallback((direction: 1 | -1) => {
+    const idx = stories.findIndex((s) => s.id === openId);
+    const target = stories[idx + direction];
+    if (!target) return; // first/last card: nothing further that way, so stay put
+    setOpenId(null);
+    requestAnimationFrame(() => {
+      document.getElementById(`watch-item-${target.id}`)?.scrollIntoView({ behavior: 'auto', block: 'start' });
+    });
+  }, [openId, stories]);
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStartY.current = e.touches[0].clientY;
+  }, []);
+
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    const startY = touchStartY.current;
+    touchStartY.current = null;
+    const el = articleRef.current;
+    if (startY === null || !el) return;
+    const deltaY = startY - e.changedTouches[0].clientY; // positive: finger moved up (page scrolling down)
+    const SWIPE_THRESHOLD = 60;
+    if (Math.abs(deltaY) < SWIPE_THRESHOLD) return;
+    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 2;
+    const atTop = el.scrollTop <= 0;
+    if (deltaY > 0 && atBottom) goToNeighbour(1);
+    else if (deltaY < 0 && atTop) goToNeighbour(-1);
+  }, [goToNeighbour]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -408,9 +447,18 @@ export default function WatchFeed({
       </div>
 
       {/* overscroll-contain keeps a flick at either end of the article from
-          scrolling the feed hidden behind it. */}
+          scrolling the feed hidden behind it; the touch handlers turn that
+          same edge swipe into moving to the next or previous card instead. */}
       {openStory && (
-        <div className="fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-night animate-fadeUp" role="dialog" aria-modal="true" aria-label={openStory.title}>
+        <div
+          ref={articleRef}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+          className="fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-night animate-fadeUp"
+          role="dialog"
+          aria-modal="true"
+          aria-label={openStory.title}
+        >
           <WatchArticle story={openStory} onClose={close} onShare={() => onShare(openStory)} />
         </div>
       )}
