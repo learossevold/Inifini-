@@ -78,6 +78,13 @@ export async function saveFollowedSources(db: SupabaseClient, userId: string, do
   }
 }
 
+export async function updateProfileRemote(
+  db: SupabaseClient, userId: string, patch: { display_name?: string; avatar_url?: string | null }
+): Promise<{ error?: string }> {
+  const { error } = await db.from('profiles').update(patch).eq('id', userId);
+  return error ? { error: error.message } : {};
+}
+
 export async function completeOnboardingRemote(
   db: SupabaseClient, userId: string, username: string, categories: Category[]
 ): Promise<{ error?: string }> {

@@ -8,6 +8,7 @@ import {
 } from '@/lib/mock-data';
 import { supabaseBrowser, supabaseConfigured } from '@/lib/supabase';
 import * as social from '@/lib/social';
+import { removeAvatar, uploadAvatar } from '@/lib/avatar';
 
 /**
  * Session: signed-in user + the social layer (friends, comments, shares,
@@ -48,6 +49,7 @@ interface SessionAPI extends SessionState {
   signInWithEmail: (email: string) => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
   completeOnboarding: (username: string, interests: Category[]) => Promise<{ error?: string }>;
+  updateProfile: (patch: { displayName?: string; avatarFile?: File | null }) => Promise<{ error?: string }>;
   setInterests: (c: Category[]) => void;
   toggleSource: (domain: string) => void;
   toggleSave: (storyId: string) => void;
@@ -199,6 +201,40 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setOnboarded(true);
     return {};
   }, [me]);
+
+  const updateProfile = useCallback(async (
+    patch: { displayName?: string; avatarFile?: File | null }
+  ): Promise<{ error?: string }> => {
+    if (blocked('Sign in to edit your profile.')) return {};
+    const db = supabaseBrowser();
+    if (!db || !me) {
+      // Demo mode: reflect the change locally so the screen still responds.
+      if (patch.displayName) setMe((m) => (m ? { ...m, display_name: patch.displayName! } : m));
+      return {};
+    }
+
+    const update: { display_name?: string; avatar_url?: string | null } = {};
+    if (patch.displayName !== undefined) update.display_name = patch.displayName.trim();
+
+    if (patch.avatarFile === null) {
+      await removeAvatar(db, me.id);
+      update.avatar_url = null;
+    } else if (patch.avatarFile) {
+      const { url, error } = await uploadAvatar(db, me.id, patch.avatarFile);
+      if (error) return { error };
+      update.avatar_url = url ?? null;
+    }
+
+    const { error } = await social.updateProfileRemote(db, me.id, update);
+    if (error) return { error };
+
+    setMe((m) => (m ? {
+      ...m,
+      ...(update.display_name !== undefined ? { display_name: update.display_name } : {}),
+      ...(update.avatar_url !== undefined ? { avatar_url: update.avatar_url } : {}),
+    } : m));
+    return {};
+  }, [me, blocked]);
 
   const setInterests = useCallback((c: Category[]) => {
     setInterestsState(c);
@@ -426,7 +462,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const value: SessionAPI = {
     me, onboarded, interests, followedSources, saves, likes, friends, friendRequests, conversations, commentsByStory,
     configured, status, canAct, signInPrompt, promptSignIn, dismissSignInPrompt, unreadCount,
-    signInWithEmail, signOut, completeOnboarding, setInterests, toggleSource, toggleSave, toggleLike,
+    signInWithEmail, signOut, completeOnboarding, updateProfile, setInterests, toggleSource, toggleSave, toggleLike,
     sendFriendRequest, acceptFriend, declineFriend, shareToFriend,
     loadStoriesByIds, loadThread, sendMessage, markConversationRead,
     blockUser, unblockUser, listBlocked, deleteAccount,

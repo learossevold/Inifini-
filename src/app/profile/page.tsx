@@ -9,6 +9,7 @@ import { RSS_SOURCES } from '@/config/sources';
 import { Avatar, categoryLabel, timeAgo } from '@/components/ui';
 import NotificationToggle from '@/components/NotificationToggle';
 import AccountSettings from '@/components/AccountSettings';
+import EditProfileSheet from '@/components/EditProfileSheet';
 
 type Panel = 'saved' | 'liked' | 'interests';
 
@@ -53,13 +54,14 @@ function StoryRow({ story }: { story: Story }) {
 export default function ProfilePage() {
   const {
     me, interests, setInterests, followedSources, toggleSource,
-    saves, likes, friends, configured, canAct, promptSignIn, loadStoriesByIds, signOut,
+    saves, likes, configured, canAct, promptSignIn, loadStoriesByIds, signOut,
   } = useSession();
 
   const [panel, setPanel] = useState<Panel>('saved');
   const [savedStories, setSavedStories] = useState<Story[] | null>(null);
   const [likedStories, setLikedStories] = useState<Story[] | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
 
   // Saved and liked ids are resolved against the database, not the demo set,
   // so they work for real accounts.
@@ -127,15 +129,26 @@ export default function ProfilePage() {
 
       {/* Identity */}
       <section className="flex flex-col items-center px-5">
-        <Avatar name={me?.display_name || me?.username || 'You'} size={92} />
+        <Avatar name={me?.display_name || me?.username || 'You'} size={92} src={me?.avatar_url} />
         <h1 className="mt-3 font-serif text-[22px] font-bold leading-tight">{me?.display_name || me?.username}</h1>
         <p className="text-[14px] text-muted">@{me?.username}</p>
-        {me?.bio && <p className="mt-2 text-center font-serif text-[15px] text-ink/85">{me.bio}</p>}
+        {me?.created_at && (
+          <p className="mt-1 text-[13px] text-muted">
+            Reading since {new Date(me.created_at).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
+          </p>
+        )}
 
-        {/* Counts stay private: no follower numbers, by design. */}
-        <dl className="mt-5 flex w-full max-w-xs items-stretch">
+        <button
+          onClick={() => setEditOpen(true)}
+          className="mt-4 rounded-full border border-rule px-5 py-2 text-[13.5px] font-semibold"
+        >
+          Edit profile
+        </button>
+
+        {/* Only what you did, never how you compare: no friend or follower
+            numbers anywhere on the profile. */}
+        <dl className="mt-5 flex w-full max-w-[240px] items-stretch">
           {[
-            ['Friends', friends.length],
             ['Saved', saves.size],
             ['Liked', likes.size],
           ].map(([label, n], i) => (
@@ -231,6 +244,8 @@ export default function ProfilePage() {
           </div>
         )}
       </div>
+
+      {editOpen && <EditProfileSheet onClose={() => setEditOpen(false)} />}
 
       {/* Settings sheet */}
       {settingsOpen && (

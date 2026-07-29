@@ -99,6 +99,33 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function handle_new_user();
 
+-- ---------- AVATARS (Supabase Storage) ----------
+-- Public bucket so profile pictures load without signed URLs. Each file lives
+-- under a folder named for its owner's id, which is what the policies check,
+-- so nobody can overwrite anyone else's picture.
+insert into storage.buckets (id, name, public)
+values ('avatars', 'avatars', true)
+on conflict (id) do nothing;
+
+drop policy if exists "avatars are publicly readable" on storage.objects;
+create policy "avatars are publicly readable" on storage.objects
+  for select using (bucket_id = 'avatars');
+
+drop policy if exists "upload own avatar" on storage.objects;
+create policy "upload own avatar" on storage.objects
+  for insert to authenticated
+  with check (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+
+drop policy if exists "replace own avatar" on storage.objects;
+create policy "replace own avatar" on storage.objects
+  for update to authenticated
+  using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+
+drop policy if exists "remove own avatar" on storage.objects;
+create policy "remove own avatar" on storage.objects
+  for delete to authenticated
+  using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+
 -- ---------- INTERESTS ----------
 create table if not exists user_interests (
   user_id uuid references auth.users(id) on delete cascade,
