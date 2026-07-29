@@ -189,7 +189,7 @@ function WatchCard({
       onClick={onOpen}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); } }}
       aria-label={`Open article: ${story.title}`}
-      className="snap-screen relative h-full w-full cursor-pointer overflow-hidden bg-night text-white"
+      className="relative h-full w-full cursor-pointer overflow-hidden bg-night text-white"
     >
       {/* Background */}
       {hasVideo ? (
@@ -277,7 +277,10 @@ function WatchArticle({
   const showImage = story.image_url && !imgFailed;
 
   return (
-    <article className="snap-soft min-h-full w-full bg-night text-white">
+    // Sized by its own content, not forced to any particular height — the
+    // wrapper that scrolls it (see WatchFeed) is what reserves a full
+    // screen's worth of space regardless of how short or tall this is.
+    <article className="w-full bg-night text-white">
       {/* Hero image (landscape, top) — tap to close back to the card */}
       <button
         type="button"
@@ -340,83 +343,72 @@ export default function WatchFeed({
 }) {
   const [activeIdx, setActiveIdx] = useState(0);
   const [openId, setOpenId] = useState<string | null>(null);
-  // Direction the article is currently sliding away in, while goToNeighbour's
-  // exit animation plays; null the rest of the time.
-  const [closingDir, setClosingDir] = useState<1 | -1 | null>(null);
   const [commentStory, setCommentStory] = useState<Story | null>(null);
   const [muted, setMuted] = useState(true);
   const { recordView } = useSession();
   const containerRef = useRef<HTMLDivElement>(null);
-  const articleRef = useRef<HTMLDivElement>(null);
-  const touchStartY = useRef<number | null>(null);
-  const EXIT_MS = 260;
 
-  // An article used to open inline, inside the snapping feed. Because it was
-  // several screens tall it became a snap point of its own, so scrolling back
-  // up towards the previous card stopped dead at the article's top instead of
-  // carrying on, and closing had to be papered over with a scripted scroll.
+  // The article opens inline, in the same snap-scrolling container as the
+  // cards, and every card slot — open or closed — is exactly one screen
+  // tall and an ordinary scroll-snap-align: start point, always. That
+  // uniformity is the whole design: two earlier attempts both broke on the
+  // same underlying fact, that scroll-snap-type: mandatory actively
+  // enforces its snap points, not just suggests them.
   //
-  // It now opens in its own layer above the feed, with its own scrollbar. The
-  // feed underneath never moves, so there is nothing to restore on close and
-  // no second snap point to fight: reading and scrolling stopped competing.
+  //  1. First, the open article WAS the snap point, but many times taller
+  //     than a normal card. With mandatory, decelerating anywhere near a
+  //     snap point coerces the rest position to its start — fine for a
+  //     card-sized point, a large unwanted jump for one several screens
+  //     tall. That's the "hopper til toppen" bug.
+  //  2. Removing its snap-align entirely while open (so it became a plain
+  //     free-scroll zone) looked right on paper, but mandatory doesn't
+  //     tolerate resting at a position that stops being a valid snap point:
+  //     the instant an open article lost its alignment, the browser
+  //     immediately re-snapped to whatever the nearest valid point was —
+  //     before you'd read a single line. Confirmed directly: toggling
+  //     scroll-snap-align on a resting element with no scroll gesture at
+  //     all still forces a jump.
+  //
+  // Keeping every slot uniformly sized sidesteps both: nothing about the
+  // open article's slot ever looks different to the outer scroller, so
+  // there's nothing for mandatory to fight. The article's own content
+  // scrolls inside its slot in a plain overflow-y: auto div. Continuing to
+  // scroll past its end isn't scripted at all — it's ordinary scroll
+  // chaining, the same browser behaviour that lets scrolling a dialog's
+  // content fall through to the page once you hit its bottom. Once the
+  // gesture reaches the outer container, that container was never anything
+  // but a normal mandatory snap-scroller, so it behaves identically to
+  // plain card-to-card scrolling, because that's what it is.
   const open = useCallback((s: Story) => {
     setOpenId(s.id);
     recordView(s.id);
   }, [recordView]);
 
+  // Every slot is the same height whether it holds a card or an article, so
+  // closing never changes the outer container's layout — there's nothing to
+  // correct or scroll back to.
   const close = useCallback(() => setOpenId(null), []);
 
   const openStory = openId ? stories.find((s) => s.id === openId) ?? null : null;
 
-  // Moving the article to its own layer fixed the jump-to-top bug, but it also
-  // cut it off from the feed's swipe-to-browse gesture: scrolling inside it
-  // just scrolls the article's own text, with no way back into the card feed
-  // short of tapping the close button. This restores "keep scrolling" at the
-  // article's own edges: a swipe that continues past the very top or very
-  // bottom of the text moves to the neighbouring card, the same direction a
-  // plain flick would have taken you in the feed. A swipe that doesn't reach
-  // an edge, or has nowhere further to go, just scrolls the article like
-  // normal — nothing else about reading changes.
-  //
-  // Closing the overlay outright and only then scrolling the feed to the
-  // target card (the first version of this) put a blank instant between the
-  // two: the article vanished, the old card flashed for a frame, then the
-  // feed jumped to the new one — which read as a glitch, not a continuation.
-  // Now the feed is repositioned first, while still hidden behind the open
-  // article, and the article slides away over it in the swiped direction —
-  // so what's visible the whole time is one continuous motion downward (or
-  // upward) into the next card, the way a snap actually feels.
-  const goToNeighbour = useCallback((direction: 1 | -1) => {
-    const idx = stories.findIndex((s) => s.id === openId);
-    const target = stories[idx + direction];
-    if (!target) return; // first/last card: nothing further that way, so stay put
-    document.getElementById(`watch-item-${target.id}`)?.scrollIntoView({ behavior: 'auto', block: 'start' });
-    setClosingDir(direction);
-  }, [openId, stories]);
-
+  // Without this, scrolling an open article out of view by simply continuing
+  // to scroll (rather than tapping close) would leave openId set forever:
+  // nothing else ever clears it. That's not just untidy — active is gated on
+  // !openId for every card, so every card's drift and audio would stay
+  // paused for the rest of the session. A dedicated low-threshold observer
+  // (not the shared 0.6 one below, which is tuned for deciding what counts
+  // as "the" active card) closes it the moment it's fully scrolled past in
+  // either direction.
   useEffect(() => {
-    if (closingDir === null) return;
-    const t = setTimeout(() => { setOpenId(null); setClosingDir(null); }, EXIT_MS);
-    return () => clearTimeout(t);
-  }, [closingDir]);
-
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    touchStartY.current = e.touches[0].clientY;
-  }, []);
-
-  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
-    const startY = touchStartY.current;
-    touchStartY.current = null;
-    const el = articleRef.current;
-    if (startY === null || !el || closingDir !== null) return;
-    const deltaY = startY - e.changedTouches[0].clientY; // positive: finger moved up (page scrolling down)
-    const SWIPE_THRESHOLD = 60;
-    if (Math.abs(deltaY) < SWIPE_THRESHOLD) return;
-    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 2;
-    const atTop = el.scrollTop <= 0;
-    if (deltaY > 0 && atBottom) goToNeighbour(1);
-    else if (deltaY < 0 && atTop) goToNeighbour(-1);
-  }, [goToNeighbour, closingDir]);
+    if (!openId) return;
+    const el = document.getElementById(`watch-item-${openId}`);
+    if (!el) return;
+    const obs = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting) setOpenId(null);
+    }, { threshold: 0 });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [openId]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -440,56 +432,38 @@ export default function WatchFeed({
 
   return (
     <>
-      {/* Cards snap hard, always. An expanded article aligns to its start but
-          carries no forced stop, and being taller than the viewport it can be
-          read through freely rather than pulling the scroll back to its top. */}
       <div
         ref={containerRef}
         className="snap-y-screen h-full overflow-y-auto no-scrollbar"
       >
         {stories.map((s, i) => (
-          /* h-full on the wrapper too: the card measures against this box, so
-             without it the wrapper collapses and the card has no height to
-             resolve against. */
-          <div key={s.id} id={`watch-item-${s.id}`} data-watch-card data-idx={i} className="relative h-full">
-            {/* Drift and audio stop while an article is being read, so nothing
-                moves or plays behind the layer on top. */}
-            <WatchCard story={s} active={i === activeIdx && !openId} onOpen={() => open(s)} muted={muted} onToggleMute={() => setMuted((m) => !m)} />
-            {/* Right-side vertical engagement rail */}
-            <div className="absolute bottom-32 right-3 z-10">
-              <EngagementBar story={s} vertical dark onComment={() => setCommentStory(s)} onShare={() => onShare(s)} />
-            </div>
+          // snap-screen + h-full unconditionally, same for every slot
+          // whether it's showing a card or an open article — see the note
+          // above open() for why that uniformity is what makes this work.
+          <div key={s.id} id={`watch-item-${s.id}`} data-watch-card data-idx={i} className="snap-screen relative h-full w-full overflow-hidden bg-night">
+            {openId === s.id ? (
+              // overflow-y-auto with the default overscroll-behavior (not
+              // contain) is what lets a swipe past the article's own bottom
+              // or top chain straight into the outer container's native
+              // snap-scroll — no script decides when that handoff happens,
+              // the browser does, the same way it always does with nested
+              // scrollables.
+              <div className="h-full w-full overflow-y-auto no-scrollbar">
+                <WatchArticle story={s} onClose={close} onShare={() => onShare(s)} />
+              </div>
+            ) : (
+              <>
+                {/* Drift and audio stop while any article is open, so nothing
+                    moves or plays behind it once it's scrolled past. */}
+                <WatchCard story={s} active={i === activeIdx && !openId} onOpen={() => open(s)} muted={muted} onToggleMute={() => setMuted((m) => !m)} />
+                <div className="absolute bottom-32 right-3 z-10">
+                  <EngagementBar story={s} vertical dark onComment={() => setCommentStory(s)} onShare={() => onShare(s)} />
+                </div>
+              </>
+            )}
           </div>
         ))}
       </div>
-
-      {/* overscroll-contain keeps a flick at either end of the article from
-          scrolling the feed hidden behind it; the touch handlers turn that
-          same edge swipe into moving to the next or previous card instead.
-          Switching the className away from animate-fadeUp cancels the fade-in
-          cleanly if a swipe fires before it finishes — the exit transition
-          then just takes over from whatever transform was current, with no
-          discontinuity. Its duration is read from EXIT_MS (JS) rather than a
-          Tailwind class so it can never drift out of sync with the setTimeout
-          that unmounts the article once the slide finishes. */}
-      {openStory && (
-        <div
-          ref={articleRef}
-          onTouchStart={handleTouchStart}
-          onTouchEnd={handleTouchEnd}
-          className={
-            closingDir !== null
-              ? `fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-night pointer-events-none transition-transform ease-in ${closingDir === 1 ? '-translate-y-full' : 'translate-y-full'}`
-              : 'fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-night animate-fadeUp'
-          }
-          style={closingDir !== null ? { transitionDuration: `${EXIT_MS}ms` } : undefined}
-          role="dialog"
-          aria-modal="true"
-          aria-label={openStory.title}
-        >
-          <WatchArticle story={openStory} onClose={close} onShare={() => onShare(openStory)} />
-        </div>
-      )}
 
       {commentStory && <CommentSheet story={commentStory} onClose={() => setCommentStory(null)} />}
     </>

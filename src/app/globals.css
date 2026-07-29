@@ -55,13 +55,6 @@ html.watch-lock .app-shell {
 .snap-y-screen { scroll-snap-type: y mandatory; }
 .snap-screen { scroll-snap-align: start; scroll-snap-stop: always; }
 
-/* An expanded article aligns to its start but must not force a stop: with
-   scroll-snap-stop: always the browser is obliged to halt there, which is what
-   yanked the scroll to the top of a long article you were scrolling past.
-   Without it, and being taller than the viewport, the article scrolls freely
-   while the cards around it keep their hard snap. */
-.snap-soft { scroll-snap-align: start; }
-
 /* Coming-soon ticker: the strip's content is duplicated once in the markup,
    and this slides it exactly one copy's width to the left before looping, so
    the seam between the end of one copy and the start of the next is invisible. */
