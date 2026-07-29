@@ -1,6 +1,7 @@
 import { supabasePublic } from './supabase';
 import { MOCK_STORIES, mockPage } from './mock-data';
 import { rankStories, pickBreaking } from './ranking';
+import { upgradeImageUrl } from './images';
 import { Category, FeedResponse, Story } from './types';
 
 const PAGE_SIZE = 9;
@@ -16,19 +17,23 @@ const HYDRATE_DEFAULTS = {
   audio_duration_seconds: null,
 };
 
+/** Shape a raw row into a Story, asking the publisher's CDN for a large image. */
+function hydrate(row: any): Story {
+  return {
+    ...HYDRATE_DEFAULTS,
+    ...row,
+    image_url: row.image_url ? upgradeImageUrl(row.image_url) : row.image_url,
+    ai_key_points: Array.isArray(row.ai_key_points) ? row.ai_key_points : [],
+  } as Story;
+}
+
 /** One published story by slug — powers the public, shareable story page. */
 export async function getStoryBySlug(slug: string): Promise<Story | null> {
   const db = supabasePublic();
   if (db) {
     try {
       const { data } = await db.from('stories').select('*').eq('slug', slug).eq('status', 'published').maybeSingle();
-      if (data) {
-        return {
-          ...HYDRATE_DEFAULTS,
-          ...(data as any),
-          ai_key_points: Array.isArray((data as any).ai_key_points) ? (data as any).ai_key_points : [],
-        } as Story;
-      }
+      if (data) return hydrate(data);
     } catch {
       /* fall through to demo content */
     }
@@ -42,11 +47,7 @@ export async function getFeed(page: number, interests: Category[], onlyInterests
   if (db) {
     try {
       const { data } = await db.from('stories').select('*').eq('status', 'published').not('source_domain', 'in', '("nrk.no","e24.no")').order('published_at', { ascending: false }).limit(400);
-      real = ((data as any[]) ?? []).map((s) => ({
-        ...HYDRATE_DEFAULTS,
-        ...s,
-        ai_key_points: Array.isArray(s.ai_key_points) ? s.ai_key_points : [],
-      })) as Story[];
+      real = ((data as any[]) ?? []).map(hydrate);
     } catch { real = []; }
   }
 

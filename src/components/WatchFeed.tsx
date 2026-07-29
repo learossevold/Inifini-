@@ -8,6 +8,13 @@ import EngagementBar from './EngagementBar';
 import Comments from './Comments';
 import { useSession } from '@/lib/session';
 
+/** Small stable hash, used to vary per-card motion without randomness on rerender. */
+function hashString(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+  return h;
+}
+
 function CommentSheet({ story, onClose }: { story: Story; onClose: () => void }) {
   const { addComment, commentsByStory, ensureComments } = useSession();
   useEffect(() => { ensureComments(story.id); }, [story.id, ensureComments]);
@@ -170,6 +177,11 @@ function WatchCard({
   const hasVideo = story.video_status === 'ready' && story.video_url;
   const showImage = story.image_url && !imgFailed;
 
+  // Stable per story, so a card keeps its move between renders while
+  // neighbouring cards drift differently.
+  const KEN_BURNS = ['animate-kenburns1', 'animate-kenburns2', 'animate-kenburns3', 'animate-kenburns4'];
+  const kenBurns = KEN_BURNS[Math.abs(hashString(story.id)) % KEN_BURNS.length];
+
   return (
     <div
       role="button"
@@ -184,12 +196,20 @@ function WatchCard({
         <video ref={videoRef} src={story.video_url!} className="absolute inset-0 h-full w-full object-cover" muted loop playsInline />
       ) : showImage ? (
         <div className="absolute inset-0">
-          <Image src={story.image_url!} alt="" fill sizes="448px" className={`object-cover opacity-70 ${active ? 'animate-kenburns' : ''}`} onError={() => setImgFailed(true)} unoptimized />
+          {/* Blurred, over-scaled copy fills the frame behind the photo, so a
+              landscape image never leaves bars on a full-screen portrait card. */}
+          <Image src={story.image_url!} alt="" fill sizes="100vw" aria-hidden
+            className="scale-125 object-cover blur-2xl brightness-50" unoptimized />
+          <Image src={story.image_url!} alt="" fill sizes="100vw"
+            className={`object-cover ${active ? kenBurns : ''}`}
+            onError={() => setImgFailed(true)} unoptimized />
         </div>
       ) : (
         <div className="absolute inset-0 bg-gradient-to-br from-[#1E2043] to-night" aria-hidden />
       )}
-      <div className="absolute inset-0 bg-gradient-to-t from-night via-night/30 to-night/60" aria-hidden />
+      {/* Weighted to the bottom, where the headline sits — the photo itself
+          stays vivid rather than being dimmed flat. */}
+      <div className="absolute inset-0 bg-gradient-to-t from-night via-night/45 via-40% to-transparent" aria-hidden />
 
       {hasAudio && <audio ref={audioRef} src={story.audio_url!} preload={active ? 'auto' : 'none'} />}
 
