@@ -28,7 +28,7 @@ const ITEMS = [
 export default function BottomNav() {
   const pathname = usePathname();
   const { unreadCount } = useSession();
-  if (pathname === '/onboarding') return null;
+  if (pathname === '/onboarding' || pathname === '/coming-soon') return null;
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 mx-auto max-w-md border-t border-rule bg-paper/95 backdrop-blur-sm">
