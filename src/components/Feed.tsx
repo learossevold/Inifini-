@@ -85,27 +85,53 @@ export default function Feed() {
 
   // Used for two different taps that want two different scroll behaviours: a
   // Related link at the bottom of an article jumps to a story elsewhere in
-  // the list, which needs scrolling to find; the next card in the ordinary
-  // list, tapped right after finishing the one above it, is already on
-  // screen. Forcing that second case to scrollIntoView snapped its top to
-  // the header regardless of where it already was, which is what turned
-  // "keep reading downward" into a jump back up. Only stories that aren't
-  // already reasonably in view get scrolled to.
+  // the list, which genuinely needs finding and scrolling to; the next card
+  // in the ordinary list, tapped right after finishing the one above it, is
+  // already on screen and should just grow in place.
   //
-  // The visibility check has to happen before expandedId changes, not after:
-  // collapsing whatever article was previously open reflows everything below
-  // it, so by the next frame the tapped card's position no longer reflects
-  // what the reader actually saw when they tapped it.
+  // The second case can't be handled by simply doing nothing and trusting
+  // the browser to leave it alone. Collapsing whatever article was
+  // previously open (which happens in this same state update, since only
+  // one can be expanded at a time) reflows everything below it, and if that
+  // article sat above the newly tapped card, the tapped card's on-screen
+  // position shifts by however much the collapse freed up — with nothing
+  // correcting for it, that shift can land the reader anywhere in the newly
+  // expanded article, including its bottom, rather than at its top.
+  //
+  // So the position actually on screen at the moment of the tap is captured
+  // first, and after the update settles, whatever moved is compensated for
+  // with an explicit scroll — pinning the tapped card to the exact screen
+  // position the reader already saw it at, rather than hoping the layout
+  // change happens to leave it there on its own. The new article's heading
+  // ends up exactly where the compact card's heading was, and everything
+  // below is new: scrolling down keeps going, nothing has to be re-found.
   const openStory = useCallback((s: Story) => {
     const el = document.getElementById(`story-${s.id}`);
-    const HEADER_H = 70;
-    const top = el?.getBoundingClientRect().top;
-    const alreadyVisible = top !== undefined && top >= HEADER_H && top <= window.innerHeight * 0.8;
+    const beforeTop = el?.getBoundingClientRect().top;
+    // Deliberately generous — anything touching the viewport at all counts
+    // as "already there", vs. a Related link that's supposed to jump you
+    // to a story you can't currently see.
+    const wasOnScreen = beforeTop !== undefined && beforeTop < window.innerHeight && beforeTop > -window.innerHeight;
 
     setExpandedId(s.id);
     recordView(s.id);
-    if (alreadyVisible) return;
-    requestAnimationFrame(() => document.getElementById(`story-${s.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+
+    requestAnimationFrame(() => {
+      const el2 = document.getElementById(`story-${s.id}`);
+      if (!el2) return;
+      if (wasOnScreen && beforeTop !== undefined) {
+        const afterTop = el2.getBoundingClientRect().top;
+        const delta = afterTop - beforeTop;
+        // 'instant', not 'auto' — html has scroll-behavior: smooth globally,
+        // and per spec 'auto' means "defer to that CSS property," so it was
+        // still animating this correction into place over several hundred ms
+        // instead of landing it in the same frame. An animated correction is
+        // exactly the visible "jump" this exists to prevent.
+        if (Math.abs(delta) > 1) window.scrollBy({ top: delta, behavior: 'instant' });
+      } else {
+        el2.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
   }, [recordView]);
 
   const relatedFor = useCallback((s: Story) => stories.filter((x) => x.id !== s.id && (x.category === s.category || x.region === s.region)).slice(0, 3), [stories]);
