@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, useCallback, useRef, ReactNode } from 'react';
-import { Category, Comment, Conversation, Message, Profile } from '@/lib/types';
+import { Category, Comment, Conversation, Message, Profile, Story } from '@/lib/types';
 import {
   MOCK_ME, MOCK_FRIENDS, MOCK_FRIEND_REQUESTS, MOCK_COMMENTS, MOCK_USERS,
   MOCK_CONVERSATIONS, MOCK_THREADS, MOCK_STORIES,
@@ -56,6 +56,7 @@ interface SessionAPI extends SessionState {
   acceptFriend: (id: string) => void;
   declineFriend: (id: string) => void;
   shareToFriend: (storyId: string, friendId: string) => void;
+  loadStoriesByIds: (ids: string[]) => Promise<Story[]>;
   loadThread: (otherId: string) => Promise<Message[]>;
   sendMessage: (otherId: string, content: string) => Promise<void>;
   markConversationRead: (otherId: string) => void;
@@ -286,6 +287,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     bumpConversation(friendId, local);
   }, [me, bumpConversation, blocked]);
 
+  /** Resolve saved/liked ids into stories, from the database or the demo set. */
+  const loadStoriesByIds = useCallback(async (ids: string[]): Promise<Story[]> => {
+    if (ids.length === 0) return [];
+    const db = supabaseBrowser();
+    if (db && me) {
+      const byId = await social.fetchStoriesByIds(db, ids);
+      return ids.map((id) => byId[id]).filter(Boolean);
+    }
+    return ids.map((id) => MOCK_STORIES.find((s) => s.id === id)).filter(Boolean) as Story[];
+  }, [me]);
+
   const loadThread = useCallback(async (otherId: string): Promise<Message[]> => {
     const db = supabaseBrowser();
     if (db && me) return social.fetchThread(db, me.id, otherId);
@@ -416,7 +428,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     configured, status, canAct, signInPrompt, promptSignIn, dismissSignInPrompt, unreadCount,
     signInWithEmail, signOut, completeOnboarding, setInterests, toggleSource, toggleSave, toggleLike,
     sendFriendRequest, acceptFriend, declineFriend, shareToFriend,
-    loadThread, sendMessage, markConversationRead,
+    loadStoriesByIds, loadThread, sendMessage, markConversationRead,
     blockUser, unblockUser, listBlocked, deleteAccount,
     addComment, likeComment, ensureComments,
   };
