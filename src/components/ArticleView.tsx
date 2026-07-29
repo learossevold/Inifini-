@@ -41,9 +41,17 @@ export default function ArticleView({
       </p>
 
       {story.image_url && !imgFailed && (
-        <div className="relative mt-4 aspect-[16/9] w-full overflow-hidden rounded-md bg-rule">
+        // Tapping the photo closes the article, the same way tapping it
+        // opened the story from its card — mirrors how Watch's hero image
+        // toggles its article closed.
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close article"
+          className="relative mt-4 block aspect-[16/9] w-full overflow-hidden rounded-md bg-rule"
+        >
           <Image src={story.image_url} alt="" fill sizes="448px" className="object-cover" onError={() => setImgFailed(true)} unoptimized />
-        </div>
+        </button>
       )}
 
       <div className="mt-4">
