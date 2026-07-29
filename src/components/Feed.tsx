@@ -83,9 +83,28 @@ export default function Feed() {
     return () => obs.disconnect();
   }, [page, tab, error, loadPage]);
 
+  // Used for two different taps that want two different scroll behaviours: a
+  // Related link at the bottom of an article jumps to a story elsewhere in
+  // the list, which needs scrolling to find; the next card in the ordinary
+  // list, tapped right after finishing the one above it, is already on
+  // screen. Forcing that second case to scrollIntoView snapped its top to
+  // the header regardless of where it already was, which is what turned
+  // "keep reading downward" into a jump back up. Only stories that aren't
+  // already reasonably in view get scrolled to.
+  //
+  // The visibility check has to happen before expandedId changes, not after:
+  // collapsing whatever article was previously open reflows everything below
+  // it, so by the next frame the tapped card's position no longer reflects
+  // what the reader actually saw when they tapped it.
   const openStory = useCallback((s: Story) => {
+    const el = document.getElementById(`story-${s.id}`);
+    const HEADER_H = 70;
+    const top = el?.getBoundingClientRect().top;
+    const alreadyVisible = top !== undefined && top >= HEADER_H && top <= window.innerHeight * 0.8;
+
     setExpandedId(s.id);
     recordView(s.id);
+    if (alreadyVisible) return;
     requestAnimationFrame(() => document.getElementById(`story-${s.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   }, [recordView]);
 

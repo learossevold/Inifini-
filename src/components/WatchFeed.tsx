@@ -340,12 +340,16 @@ export default function WatchFeed({
 }) {
   const [activeIdx, setActiveIdx] = useState(0);
   const [openId, setOpenId] = useState<string | null>(null);
+  // Direction the article is currently sliding away in, while goToNeighbour's
+  // exit animation plays; null the rest of the time.
+  const [closingDir, setClosingDir] = useState<1 | -1 | null>(null);
   const [commentStory, setCommentStory] = useState<Story | null>(null);
   const [muted, setMuted] = useState(true);
   const { recordView } = useSession();
   const containerRef = useRef<HTMLDivElement>(null);
   const articleRef = useRef<HTMLDivElement>(null);
   const touchStartY = useRef<number | null>(null);
+  const EXIT_MS = 260;
 
   // An article used to open inline, inside the snapping feed. Because it was
   // several screens tall it became a snap point of its own, so scrolling back
@@ -369,19 +373,32 @@ export default function WatchFeed({
   // just scrolls the article's own text, with no way back into the card feed
   // short of tapping the close button. This restores "keep scrolling" at the
   // article's own edges: a swipe that continues past the very top or very
-  // bottom of the text closes the article and lands on the neighbouring card,
-  // the same direction a plain flick would have taken you in the feed. A
-  // swipe that doesn't reach an edge, or has nowhere further to go, just
-  // scrolls the article like normal — nothing else about reading changes.
+  // bottom of the text moves to the neighbouring card, the same direction a
+  // plain flick would have taken you in the feed. A swipe that doesn't reach
+  // an edge, or has nowhere further to go, just scrolls the article like
+  // normal — nothing else about reading changes.
+  //
+  // Closing the overlay outright and only then scrolling the feed to the
+  // target card (the first version of this) put a blank instant between the
+  // two: the article vanished, the old card flashed for a frame, then the
+  // feed jumped to the new one — which read as a glitch, not a continuation.
+  // Now the feed is repositioned first, while still hidden behind the open
+  // article, and the article slides away over it in the swiped direction —
+  // so what's visible the whole time is one continuous motion downward (or
+  // upward) into the next card, the way a snap actually feels.
   const goToNeighbour = useCallback((direction: 1 | -1) => {
     const idx = stories.findIndex((s) => s.id === openId);
     const target = stories[idx + direction];
     if (!target) return; // first/last card: nothing further that way, so stay put
-    setOpenId(null);
-    requestAnimationFrame(() => {
-      document.getElementById(`watch-item-${target.id}`)?.scrollIntoView({ behavior: 'auto', block: 'start' });
-    });
+    document.getElementById(`watch-item-${target.id}`)?.scrollIntoView({ behavior: 'auto', block: 'start' });
+    setClosingDir(direction);
   }, [openId, stories]);
+
+  useEffect(() => {
+    if (closingDir === null) return;
+    const t = setTimeout(() => { setOpenId(null); setClosingDir(null); }, EXIT_MS);
+    return () => clearTimeout(t);
+  }, [closingDir]);
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     touchStartY.current = e.touches[0].clientY;
@@ -391,7 +408,7 @@ export default function WatchFeed({
     const startY = touchStartY.current;
     touchStartY.current = null;
     const el = articleRef.current;
-    if (startY === null || !el) return;
+    if (startY === null || !el || closingDir !== null) return;
     const deltaY = startY - e.changedTouches[0].clientY; // positive: finger moved up (page scrolling down)
     const SWIPE_THRESHOLD = 60;
     if (Math.abs(deltaY) < SWIPE_THRESHOLD) return;
@@ -399,7 +416,7 @@ export default function WatchFeed({
     const atTop = el.scrollTop <= 0;
     if (deltaY > 0 && atBottom) goToNeighbour(1);
     else if (deltaY < 0 && atTop) goToNeighbour(-1);
-  }, [goToNeighbour]);
+  }, [goToNeighbour, closingDir]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -448,13 +465,24 @@ export default function WatchFeed({
 
       {/* overscroll-contain keeps a flick at either end of the article from
           scrolling the feed hidden behind it; the touch handlers turn that
-          same edge swipe into moving to the next or previous card instead. */}
+          same edge swipe into moving to the next or previous card instead.
+          Switching the className away from animate-fadeUp cancels the fade-in
+          cleanly if a swipe fires before it finishes — the exit transition
+          then just takes over from whatever transform was current, with no
+          discontinuity. Its duration is read from EXIT_MS (JS) rather than a
+          Tailwind class so it can never drift out of sync with the setTimeout
+          that unmounts the article once the slide finishes. */}
       {openStory && (
         <div
           ref={articleRef}
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
-          className="fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-night animate-fadeUp"
+          className={
+            closingDir !== null
+              ? `fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-night pointer-events-none transition-transform ease-in ${closingDir === 1 ? '-translate-y-full' : 'translate-y-full'}`
+              : 'fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-night animate-fadeUp'
+          }
+          style={closingDir !== null ? { transitionDuration: `${EXIT_MS}ms` } : undefined}
           role="dialog"
           aria-modal="true"
           aria-label={openStory.title}
