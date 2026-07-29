@@ -347,6 +347,7 @@ export default function WatchFeed({
   const [muted, setMuted] = useState(true);
   const { recordView } = useSession();
   const containerRef = useRef<HTMLDivElement>(null);
+  const touchStartY = useRef<number | null>(null);
 
   // The article opens inline, in the same snap-scrolling container as the
   // cards, and every card slot — open or closed — is exactly one screen
@@ -372,13 +373,23 @@ export default function WatchFeed({
   // Keeping every slot uniformly sized sidesteps both: nothing about the
   // open article's slot ever looks different to the outer scroller, so
   // there's nothing for mandatory to fight. The article's own content
-  // scrolls inside its slot in a plain overflow-y: auto div. Continuing to
-  // scroll past its end isn't scripted at all — it's ordinary scroll
-  // chaining, the same browser behaviour that lets scrolling a dialog's
-  // content fall through to the page once you hit its bottom. Once the
-  // gesture reaches the outer container, that container was never anything
-  // but a normal mandatory snap-scroller, so it behaves identically to
-  // plain card-to-card scrolling, because that's what it is.
+  // scrolls inside its slot in a plain overflow-y: auto div.
+  //
+  // Continuing to scroll past the article's end was meant to rely on plain
+  // scroll chaining — the same browser behaviour that lets a dialog's
+  // content fall through to the page once you hit its bottom — with no
+  // script deciding when the handoff happens. That held up under wheel
+  // events, but not under real touch on iOS: chaining out of a nested
+  // touch-scrolled container isn't reliable there, so continuing to swipe
+  // at the article's boundary just went nowhere.
+  //
+  // What's below detects that specific case — a swipe that starts and ends
+  // at the article's own scroll boundary — and nudges the OUTER container
+  // by one slot with scrollIntoView. It isn't simulating the transition:
+  // the target is a perfectly ordinary uniform snap point, so the outer
+  // container's own native mandatory-snap and smooth-scroll do the actual
+  // animating, the same as they do for a plain card-to-card flick. The
+  // script's only job is deciding *that* to move, not *how*.
   const open = useCallback((s: Story) => {
     setOpenId(s.id);
     recordView(s.id);
@@ -391,6 +402,37 @@ export default function WatchFeed({
 
   const openStory = openId ? stories.find((s) => s.id === openId) ?? null : null;
 
+  const handleArticleTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStartY.current = e.touches[0].clientY;
+  }, []);
+
+  const handleArticleTouchEnd = useCallback((e: React.TouchEvent) => {
+    const startY = touchStartY.current;
+    touchStartY.current = null;
+    if (startY === null || !openId) return;
+    const el = e.currentTarget;
+    const deltaY = startY - e.changedTouches[0].clientY; // positive: swiped up (content moving down)
+    const SWIPE_THRESHOLD = 60;
+    if (Math.abs(deltaY) < SWIPE_THRESHOLD) return;
+    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 2;
+    const atTop = el.scrollTop <= 0;
+    const idx = stories.findIndex((s) => s.id === openId);
+    const direction = deltaY > 0 && atBottom ? 1 : deltaY < 0 && atTop ? -1 : 0;
+    if (direction === 0) return; // not at the boundary in the swiped direction: let it scroll normally
+    const target = stories[idx + direction];
+    if (!target) return; // first/last card, nowhere further that way
+    document.getElementById(`watch-item-${target.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // Closed directly here rather than left to the auto-close observer
+    // below: a smooth, CSS-driven scrollIntoView reaches the right final
+    // scrollTop, but doesn't reliably re-fire IntersectionObserver the way
+    // a plain scrollTop assignment does — confirmed directly, the observer
+    // notified once on mount and then never again despite the target
+    // genuinely scrolling out of view. The observer still does its job for
+    // the other case, an article scrolled away by ordinary touch scrolling
+    // on the outer container, which isn't driven by scrollIntoView at all.
+    setOpenId(null);
+  }, [openId, stories]);
+
   // Without this, scrolling an open article out of view by simply continuing
   // to scroll (rather than tapping close) would leave openId set forever:
   // nothing else ever clears it. That's not just untidy — active is gated on
@@ -399,13 +441,20 @@ export default function WatchFeed({
   // (not the shared 0.6 one below, which is tuned for deciding what counts
   // as "the" active card) closes it the moment it's fully scrolled past in
   // either direction.
+  //
+  // root has to be the scroll container itself, not the default (the page
+  // viewport). Without it, an element sitting just below the sticky header
+  // still counts as "intersecting" by page standards even though the header
+  // visually covers it — a dead zone exactly one header's height tall where
+  // this observer would never fire, leaving the article stuck open right at
+  // the boundary a swipe was trying to scroll past.
   useEffect(() => {
     if (!openId) return;
     const el = document.getElementById(`watch-item-${openId}`);
-    if (!el) return;
+    if (!el || !containerRef.current) return;
     const obs = new IntersectionObserver(([entry]) => {
       if (!entry.isIntersecting) setOpenId(null);
-    }, { threshold: 0 });
+    }, { root: containerRef.current, threshold: 0 });
     obs.observe(el);
     return () => obs.disconnect();
   }, [openId]);
@@ -424,7 +473,7 @@ export default function WatchFeed({
           }
         });
       },
-      { threshold: 0.6 }
+      { root: el, threshold: 0.6 }
     );
     cards.forEach((c) => obs.observe(c));
     return () => obs.disconnect();
@@ -442,13 +491,11 @@ export default function WatchFeed({
           // above open() for why that uniformity is what makes this work.
           <div key={s.id} id={`watch-item-${s.id}`} data-watch-card data-idx={i} className="snap-screen relative h-full w-full overflow-hidden bg-night">
             {openId === s.id ? (
-              // overflow-y-auto with the default overscroll-behavior (not
-              // contain) is what lets a swipe past the article's own bottom
-              // or top chain straight into the outer container's native
-              // snap-scroll — no script decides when that handoff happens,
-              // the browser does, the same way it always does with nested
-              // scrollables.
-              <div className="h-full w-full overflow-y-auto no-scrollbar">
+              <div
+                className="h-full w-full overflow-y-auto no-scrollbar"
+                onTouchStart={handleArticleTouchStart}
+                onTouchEnd={handleArticleTouchEnd}
+              >
                 <WatchArticle story={s} onClose={close} onShare={() => onShare(s)} />
               </div>
             ) : (
