@@ -8,7 +8,6 @@ import StoryCard from './StoryCard';
 import ArticleView from './ArticleView';
 import WatchFeed from './WatchFeed';
 import ShareSheet from './ShareSheet';
-import Logo from './Logo';
 import { categoryLabel } from './ui';
 
 export default function Feed() {
@@ -82,28 +81,30 @@ export default function Feed() {
   const relatedFor = useCallback((s: Story) => stories.filter((x) => x.id !== s.id && (x.category === s.category || x.region === s.region)).slice(0, 3), [stories]);
 
   const TabBtn = ({ id, label }: { id: FeedTab; label: string }) => (
-    <button onClick={() => setTab(id)} className={`relative py-1 font-sans text-[15px] ${tab === id ? 'font-semibold text-ink' : 'text-muted'}`}>
+    <button
+      onClick={() => setTab(id)}
+      aria-current={tab === id ? 'page' : undefined}
+      className={`relative flex-1 py-3.5 font-sans text-[16px] ${tab === id ? 'font-semibold text-ink' : 'text-muted'}`}
+    >
       {label}
-      {tab === id && <span className="absolute inset-x-0 -bottom-[13px] h-0.5 rounded-full bg-accent" />}
+      {/* Underline sits under the word, not the whole third of the bar. */}
+      {tab === id && <span className="absolute bottom-0 left-1/2 h-0.5 w-9 -translate-x-1/2 rounded-full bg-accent" />}
     </button>
   );
 
   return (
     <div>
-      {/* Masthead: logo left, tabs beside it (Watch first) */}
+      {/* The three feeds share the bar equally: Watch left, News centre,
+          Explore right. The brand mark lives on the app icon rather than
+          crowding this row. */}
       <header className="sticky top-0 z-30 border-b border-rule bg-paper/95 backdrop-blur-sm">
-        <div className="flex items-center gap-4 px-4 py-3">
-          <Link href="/" aria-label="Inifini home" className="shrink-0">
-            <Logo size={30} />
-          </Link>
-          <nav className="flex items-center gap-6">
-            <TabBtn id="watch" label="Watch" />
-            <TabBtn id="news" label="News" />
-            {/* Internally still the "following" feed — nobody follows *people*,
-                so it reads as Explore: your interests + the outlets you picked. */}
-            <TabBtn id="following" label="Explore" />
-          </nav>
-        </div>
+        <nav className="flex items-stretch px-2">
+          <TabBtn id="watch" label="Watch" />
+          <TabBtn id="news" label="News" />
+          {/* Internally still the "following" feed. Nobody follows *people*,
+              so it reads as Explore: your interests plus the outlets you picked. */}
+          <TabBtn id="following" label="Explore" />
+        </nav>
       </header>
 
       {shareStory && <ShareSheet story={shareStory} onClose={() => setShareStory(null)} />}
