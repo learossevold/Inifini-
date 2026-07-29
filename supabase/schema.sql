@@ -222,30 +222,43 @@ alter table comments enable row level security;
 alter table comment_likes enable row level security;
 
 -- Public reads
+drop policy if exists "read published stories" on stories;
 create policy "read published stories" on stories for select using (status = 'published');
+drop policy if exists "read active sources" on sources;
 create policy "read active sources" on sources for select using (active = true);
+drop policy if exists "read profiles" on profiles;
 create policy "read profiles" on profiles for select using (true);
+drop policy if exists "read visible comments" on comments;
 create policy "read visible comments" on comments for select using (hidden = false);
 
 -- Profiles: a user can edit only their own
+drop policy if exists "update own profile" on profiles;
 create policy "update own profile" on profiles for update using (auth.uid() = id);
 
 -- Interests: owner only
+drop policy if exists "manage own interests" on user_interests;
 create policy "manage own interests" on user_interests for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 -- Followed sources: owner only
+drop policy if exists "manage own sources" on user_sources;
 create policy "manage own sources" on user_sources for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 -- Friendships: visible to the two users involved; either can create/update
+drop policy if exists "see own friendships" on friendships;
 create policy "see own friendships" on friendships for select using (auth.uid() = user_id_1 or auth.uid() = user_id_2);
+drop policy if exists "create friendship" on friendships;
 create policy "create friendship" on friendships for insert with check (auth.uid() = user_id_1);
+drop policy if exists "update own friendship" on friendships;
 create policy "update own friendship" on friendships for update using (auth.uid() = user_id_1 or auth.uid() = user_id_2);
 drop policy if exists "delete own friendship" on friendships;
 create policy "delete own friendship" on friendships for delete using (auth.uid() = user_id_1 or auth.uid() = user_id_2);
 
 -- Shared stories: sender or recipient
+drop policy if exists "see own shares" on shared_stories;
 create policy "see own shares" on shared_stories for select using (auth.uid() = from_user_id or auth.uid() = to_user_id);
+drop policy if exists "send share" on shared_stories;
 create policy "send share" on shared_stories for insert with check (auth.uid() = from_user_id);
+drop policy if exists "mark share read" on shared_stories;
 create policy "mark share read" on shared_stories for update using (auth.uid() = to_user_id);
 
 -- Push subscriptions: no policies on purpose. Reads and writes go through
@@ -275,10 +288,15 @@ drop policy if exists "mark message read" on messages;
 create policy "mark message read" on messages for update using (auth.uid() = recipient_id);
 
 -- Saves / likes: owner only
+drop policy if exists "manage own saves" on story_saves;
 create policy "manage own saves" on story_saves for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "manage own story likes" on story_likes;
 create policy "manage own story likes" on story_likes for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "manage own comment likes" on comment_likes;
 create policy "manage own comment likes" on comment_likes for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 -- Comments: anyone signed in can post; author can edit/hide own
+drop policy if exists "post comment" on comments;
 create policy "post comment" on comments for insert with check (auth.uid() = user_id);
+drop policy if exists "edit own comment" on comments;
 create policy "edit own comment" on comments for update using (auth.uid() = user_id);
