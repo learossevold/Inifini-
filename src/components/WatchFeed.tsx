@@ -271,7 +271,7 @@ function WatchArticle({
   const showImage = story.image_url && !imgFailed;
 
   return (
-    <article className="snap-screen min-h-[calc(100vh-7.5rem)] w-full bg-night text-white">
+    <article className="snap-soft min-h-[calc(100vh-7.5rem)] w-full bg-night text-white">
       {/* Hero image (landscape, top) — tap to close back to the card */}
       <button
         type="button"
@@ -338,20 +338,22 @@ export default function WatchFeed({
   const [muted, setMuted] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const scrollItemToTop = useCallback((id: string) => {
+  const scrollItemToTop = useCallback((id: string, behavior: ScrollBehavior = 'auto') => {
     requestAnimationFrame(() => {
-      document.getElementById(`watch-item-${id}`)?.scrollIntoView({ behavior: 'auto', block: 'start' });
+      document.getElementById(`watch-item-${id}`)?.scrollIntoView({ behavior, block: 'start' });
     });
   }, []);
 
   const open = useCallback((s: Story) => {
     setOpenId(s.id);
+    // Instant on open: you tapped for the article, so put it there at once.
     scrollItemToTop(s.id);
   }, [scrollItemToTop]);
 
   const close = useCallback((s: Story) => {
     setOpenId((cur) => (cur === s.id ? null : cur));
-    scrollItemToTop(s.id);
+    // Gliding back to the card reads as returning, rather than being thrown.
+    scrollItemToTop(s.id, 'smooth');
   }, [scrollItemToTop]);
 
   useEffect(() => {
@@ -376,7 +378,12 @@ export default function WatchFeed({
 
   return (
     <>
-      <div ref={containerRef} className="snap-y-screen h-[calc(100vh-7.5rem)] overflow-y-auto no-scrollbar">
+      {/* Hard snap between cards gives the flick-through feel; while an article
+          is open the feed relaxes so scrolling away and back stays calm. */}
+      <div
+        ref={containerRef}
+        className={`${openId ? 'snap-y-gentle' : 'snap-y-screen'} h-[calc(100vh-7.5rem)] overflow-y-auto no-scrollbar`}
+      >
         {stories.map((s, i) => (
           <div key={s.id} id={`watch-item-${s.id}`} data-watch-card data-idx={i} className="relative">
             {openId === s.id ? (

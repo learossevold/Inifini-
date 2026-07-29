@@ -35,10 +35,12 @@ const config: Config = {
       keyframes: {
         pulseDot: { '0%,100%': { opacity: '1' }, '50%': { opacity: '0.3' } },
         fadeUp: { from: { opacity: '0', transform: 'translateY(8px)' }, to: { opacity: '1', transform: 'translateY(0)' } },
-        kenburns1: { from: { transform: 'scale(1.04) translate(0, 0)' }, to: { transform: 'scale(1.18) translate(-3%, -3%)' } },
-        kenburns2: { from: { transform: 'scale(1.18) translate(2%, 2%)' }, to: { transform: 'scale(1.04) translate(0, 0)' } },
-        kenburns3: { from: { transform: 'scale(1.08) translate(-3%, 1%)' }, to: { transform: 'scale(1.16) translate(3%, -2%)' } },
-        kenburns4: { from: { transform: 'scale(1.06) translate(0, 3%)' }, to: { transform: 'scale(1.2) translate(0, -3%)' } },
+        // Held well above 1 throughout, so the subject fills the frame like a
+        // shot rather than sitting inside the whole photo.
+        kenburns1: { from: { transform: 'scale(1.20) translate(0, 0)' }, to: { transform: 'scale(1.38) translate(-3%, -3%)' } },
+        kenburns2: { from: { transform: 'scale(1.38) translate(2%, 2%)' }, to: { transform: 'scale(1.20) translate(0, 0)' } },
+        kenburns3: { from: { transform: 'scale(1.24) translate(-3%, 1%)' }, to: { transform: 'scale(1.40) translate(3%, -2%)' } },
+        kenburns4: { from: { transform: 'scale(1.22) translate(0, 3%)' }, to: { transform: 'scale(1.42) translate(0, -3%)' } },
       },
     },
   },

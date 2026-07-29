@@ -8,9 +8,15 @@ html { scroll-behavior: smooth; }
 .rule-t { border-top: 1px solid theme('colors.rule'); }
 ::selection { background: theme('colors.accentSoft'); }
 
-/* Watch tab: snap each video to full viewport height */
+/* Watch tab: each card snaps to the full viewport height. */
 .snap-y-screen { scroll-snap-type: y mandatory; }
 .snap-screen { scroll-snap-align: start; scroll-snap-stop: always; }
+
+/* While an article is expanded the feed relaxes: a long article is taller than
+   the viewport, so a mandatory snap yanks you to its top the moment you scroll
+   back toward it. Proximity still aligns as you arrive, but only gently. */
+.snap-y-gentle { scroll-snap-type: y proximity; }
+.snap-soft { scroll-snap-align: start; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
