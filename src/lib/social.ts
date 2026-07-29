@@ -38,7 +38,7 @@ export async function searchProfiles(db: SupabaseClient, query: string, excludeI
   return ((data as Profile[]) ?? []).filter((p) => !blocked.has(p.id));
 }
 
-async function fetchStoriesByIds(db: SupabaseClient, ids: string[]): Promise<Record<string, Story>> {
+export async function fetchStoriesByIds(db: SupabaseClient, ids: string[]): Promise<Record<string, Story>> {
   if (ids.length === 0) return {};
   const { data } = await db.from('stories').select('*').in('id', ids);
   const out: Record<string, Story> = {};
