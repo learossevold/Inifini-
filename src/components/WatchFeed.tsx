@@ -380,11 +380,12 @@ export default function WatchFeed({
 
   return (
     <>
-      {/* Hard snap between cards gives the flick-through feel; while an article
-          is open the feed relaxes so scrolling away and back stays calm. */}
+      {/* Cards snap hard, always. An expanded article aligns to its start but
+          carries no forced stop, and being taller than the viewport it can be
+          read through freely rather than pulling the scroll back to its top. */}
       <div
         ref={containerRef}
-        className={`${openId ? 'snap-y-gentle' : 'snap-y-screen'} h-[calc(100vh-7.5rem)] overflow-y-auto no-scrollbar`}
+        className="snap-y-screen h-[calc(100vh-7.5rem)] overflow-y-auto no-scrollbar"
       >
         {stories.map((s, i) => (
           <div key={s.id} id={`watch-item-${s.id}`} data-watch-card data-idx={i} className="relative">
