@@ -1,5 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import { Category, Comment, Conversation, Message, Profile, Story } from './types';
+import { CATEGORIES, Category, Collection, Comment, Conversation, Message, Profile, ReadingSummary, Story } from './types';
 
 /**
  * Client-side data access for the social layer (friends, comments, shares,
@@ -160,6 +160,114 @@ export async function fetchMyBlocks(db: SupabaseClient, myId: string): Promise<P
   const ids = ((data as { blocked_id: string }[]) ?? []).map((r) => r.blocked_id);
   const profiles = await fetchProfilesByIds(db, ids);
   return ids.map((id) => profiles[id]).filter(Boolean);
+}
+
+// ---------- Collections ----------
+
+export async function fetchCollections(db: SupabaseClient, myId: string): Promise<Collection[]> {
+  const { data } = await db.from('collections').select('id, name').eq('user_id', myId).order('name');
+  const rows = (data as { id: string; name: string }[]) ?? [];
+  if (rows.length === 0) return [];
+
+  // One query for every item, counted in JS rather than a round trip each.
+  const { data: items } = await db.from('collection_items').select('collection_id').in('collection_id', rows.map((r) => r.id));
+  const counts = new Map<string, number>();
+  for (const it of ((items as { collection_id: string }[]) ?? [])) {
+    counts.set(it.collection_id, (counts.get(it.collection_id) ?? 0) + 1);
+  }
+  return rows.map((r) => ({ id: r.id, name: r.name, count: counts.get(r.id) ?? 0 }));
+}
+
+export async function createCollectionRemote(
+  db: SupabaseClient, myId: string, name: string
+): Promise<{ id?: string; error?: string }> {
+  const { data, error } = await db.from('collections').insert({ user_id: myId, name: name.trim() }).select('id').single();
+  if (error) {
+    return { error: error.message.includes('duplicate') ? 'You already have a collection with that name.' : error.message };
+  }
+  return { id: (data as { id: string }).id };
+}
+
+export async function deleteCollectionRemote(db: SupabaseClient, myId: string, collectionId: string): Promise<void> {
+  await db.from('collections').delete().eq('id', collectionId).eq('user_id', myId);
+}
+
+/** Which of my collections already hold this story. */
+export async function fetchCollectionsForStory(db: SupabaseClient, myId: string, storyId: string): Promise<Set<string>> {
+  const { data: mine } = await db.from('collections').select('id').eq('user_id', myId);
+  const ids = ((mine as { id: string }[]) ?? []).map((c) => c.id);
+  if (ids.length === 0) return new Set();
+  const { data } = await db.from('collection_items').select('collection_id').eq('story_id', storyId).in('collection_id', ids);
+  return new Set(((data as { collection_id: string }[]) ?? []).map((r) => r.collection_id));
+}
+
+export async function setStoryInCollection(
+  db: SupabaseClient, collectionId: string, storyId: string, member: boolean
+): Promise<void> {
+  if (member) await db.from('collection_items').upsert({ collection_id: collectionId, story_id: storyId });
+  else await db.from('collection_items').delete().eq('collection_id', collectionId).eq('story_id', storyId);
+}
+
+export async function fetchCollectionStories(db: SupabaseClient, collectionId: string): Promise<Story[]> {
+  const { data } = await db.from('collection_items').select('story_id').eq('collection_id', collectionId).order('added_at', { ascending: false });
+  const ids = ((data as { story_id: string }[]) ?? []).map((r) => r.story_id);
+  const byId = await fetchStoriesByIds(db, ids);
+  return ids.map((id) => byId[id]).filter(Boolean);
+}
+
+// ---------- Reading history ----------
+
+export async function recordViewRemote(db: SupabaseClient, myId: string, storyId: string): Promise<void> {
+  // Upsert so re-reading a story keeps one row and refreshes the timestamp.
+  await db.from('story_views').upsert(
+    { user_id: myId, story_id: storyId, viewed_at: new Date().toISOString() },
+    { onConflict: 'user_id,story_id' }
+  );
+}
+
+/** This calendar month's reading, aggregated in JS from the reader's own rows. */
+export async function fetchReadingSummary(db: SupabaseClient, myId: string): Promise<ReadingSummary> {
+  const start = new Date();
+  start.setDate(1);
+  start.setHours(0, 0, 0, 0);
+
+  const { data } = await db
+    .from('story_views')
+    .select('story_id')
+    .eq('user_id', myId)
+    .gte('viewed_at', start.toISOString())
+    .limit(500);
+
+  const ids = ((data as { story_id: string }[]) ?? []).map((r) => r.story_id);
+  const empty: ReadingSummary = { storiesRead: 0, minutes: 0, topCategories: [], topSources: [] };
+  if (ids.length === 0) return empty;
+
+  const byId = await fetchStoriesByIds(db, ids);
+  const stories = ids.map((id) => byId[id]).filter(Boolean);
+  if (stories.length === 0) return empty;
+
+  const catCount = new Map<string, number>();
+  const srcCount = new Map<string, number>();
+  let words = 0;
+  for (const s of stories) {
+    catCount.set(s.category, (catCount.get(s.category) ?? 0) + 1);
+    srcCount.set(s.source_name, (srcCount.get(s.source_name) ?? 0) + 1);
+    words += `${s.ai_medium_summary} ${s.ai_why_it_matters} ${s.ai_background} ${s.ai_what_next}`.split(/\s+/).length;
+  }
+
+  const top = <T>(m: Map<string, number>, make: (k: string, n: number) => T): T[] =>
+    Array.from(m.entries()).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, n]) => make(k, n));
+
+  return {
+    storiesRead: stories.length,
+    minutes: Math.max(1, Math.round(words / 200)),
+    topCategories: top(catCount, (id, count) => ({
+      id: id as Category,
+      label: CATEGORIES.find((c) => c.id === id)?.label ?? id,
+      count,
+    })),
+    topSources: top(srcCount, (name, count) => ({ name, count })),
+  };
 }
 
 // ---------- Direct messages ----------

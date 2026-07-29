@@ -12,7 +12,7 @@ import Logo from './Logo';
 import { categoryLabel } from './ui';
 
 export default function Feed() {
-  const { interests, followedSources } = useSession();
+  const { interests, followedSources, recordView } = useSession();
   const [tab, setTab] = useState<FeedTab>('watch');
   const [stories, setStories] = useState<Story[]>([]);
   const [page, setPage] = useState(0);
@@ -76,8 +76,9 @@ export default function Feed() {
 
   const openStory = useCallback((s: Story) => {
     setExpandedId(s.id);
+    recordView(s.id);
     requestAnimationFrame(() => document.getElementById(`story-${s.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
-  }, []);
+  }, [recordView]);
 
   const relatedFor = useCallback((s: Story) => stories.filter((x) => x.id !== s.id && (x.category === s.category || x.region === s.region)).slice(0, 3), [stories]);
 

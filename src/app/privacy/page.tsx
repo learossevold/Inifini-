@@ -48,7 +48,8 @@ export default function PrivacyPage() {
           <li>Your email address, used only to sign you in.</li>
           <li>Your username and display name, which other users can see.</li>
           <li>The topics and news outlets you follow, to build your Explore feed.</li>
-          <li>Stories you save and like.</li>
+          <li>Stories you save and like, and any collections you sort them into.</li>
+          <li>Which stories you have opened, used only to show you your own reading summary. It is never shown to anyone else and never pooled with other readers.</li>
           <li>Comments you post, which are public to other users.</li>
           <li>Friend connections, and the messages you send and receive.</li>
           <li>People you have blocked.</li>
@@ -83,8 +84,9 @@ export default function PrivacyPage() {
       <Section title="Your rights">
         <p>
           Under the GDPR you can access, correct, export or delete your data. You can delete your account
-          yourself at any time from your profile — this permanently removes your profile, interests, saves,
-          likes, comments, friendships, messages and notification settings. It cannot be undone.
+          yourself at any time from your profile. That permanently removes your profile, interests, saves,
+          likes, collections, reading history, comments, friendships, messages and notification settings.
+          It cannot be undone.
         </p>
         <p>
           For anything else, or to request a copy of your data, email{' '}

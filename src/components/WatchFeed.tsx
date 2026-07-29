@@ -336,6 +336,7 @@ export default function WatchFeed({
   const [openId, setOpenId] = useState<string | null>(null);
   const [commentStory, setCommentStory] = useState<Story | null>(null);
   const [muted, setMuted] = useState(true);
+  const { recordView } = useSession();
   const containerRef = useRef<HTMLDivElement>(null);
 
   const scrollItemToTop = useCallback((id: string, behavior: ScrollBehavior = 'auto') => {
@@ -346,9 +347,10 @@ export default function WatchFeed({
 
   const open = useCallback((s: Story) => {
     setOpenId(s.id);
+    recordView(s.id);
     // Instant on open: you tapped for the article, so put it there at once.
     scrollItemToTop(s.id);
-  }, [scrollItemToTop]);
+  }, [scrollItemToTop, recordView]);
 
   const close = useCallback((s: Story) => {
     setOpenId((cur) => (cur === s.id ? null : cur));

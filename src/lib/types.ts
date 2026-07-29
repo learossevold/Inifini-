@@ -109,6 +109,21 @@ export interface SharedStory {
   from?: Pick<Profile, 'username' | 'display_name' | 'avatar_url'>;
 }
 
+/** A named folder of saved stories. */
+export interface Collection {
+  id: string;
+  name: string;
+  count: number;
+}
+
+/** Your own month of reading, shown only to you. */
+export interface ReadingSummary {
+  storiesRead: number;
+  minutes: number;
+  topCategories: { id: Category; label: string; count: number }[];
+  topSources: { name: string; count: number }[];
+}
+
 export interface Message {
   id: string;
   sender_id: string;

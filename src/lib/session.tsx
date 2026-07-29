@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, useCallback, useRef, ReactNode } from 'react';
-import { Category, Comment, Conversation, Message, Profile, Story } from '@/lib/types';
+import { Category, Collection, Comment, Conversation, Message, Profile, ReadingSummary, Story } from '@/lib/types';
 import {
   MOCK_ME, MOCK_FRIENDS, MOCK_FRIEND_REQUESTS, MOCK_COMMENTS, MOCK_USERS,
   MOCK_CONVERSATIONS, MOCK_THREADS, MOCK_STORIES,
@@ -59,6 +59,15 @@ interface SessionAPI extends SessionState {
   declineFriend: (id: string) => void;
   shareToFriend: (storyId: string, friendId: string) => void;
   loadStoriesByIds: (ids: string[]) => Promise<Story[]>;
+  collections: Collection[];
+  refreshCollections: () => Promise<void>;
+  createCollection: (name: string) => Promise<{ id?: string; error?: string }>;
+  deleteCollection: (id: string) => Promise<void>;
+  collectionsForStory: (storyId: string) => Promise<Set<string>>;
+  setInCollection: (collectionId: string, storyId: string, member: boolean) => Promise<void>;
+  loadCollectionStories: (collectionId: string) => Promise<Story[]>;
+  recordView: (storyId: string) => void;
+  loadReadingSummary: () => Promise<ReadingSummary | null>;
   loadThread: (otherId: string) => Promise<Message[]>;
   sendMessage: (otherId: string, content: string) => Promise<void>;
   markConversationRead: (otherId: string) => void;
@@ -93,6 +102,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   );
   const loadedCommentsRef = useRef<Set<string>>(new Set());
   const [signInPrompt, setSignInPrompt] = useState<string | null>(null);
+  const [collections, setCollections] = useState<Collection[]>([]);
+  // Demo mode keeps collection membership in memory.
+  const mockCollectionItemsRef = useRef<Map<string, Set<string>>>(new Map());
   // Demo mode keeps threads in memory so a sent message shows up in the chat.
   const mockThreadsRef = useRef<Record<string, Message[]>>(
     configured ? {} : JSON.parse(JSON.stringify(MOCK_THREADS))
@@ -118,12 +130,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      const [ints, srcs, fr, convos, sl] = await Promise.all([
+      const [ints, srcs, fr, convos, sl, cols] = await Promise.all([
         social.fetchInterests(db, uid),
         social.fetchFollowedSources(db, uid),
         social.fetchFriendsAndRequests(db, uid),
         social.fetchConversations(db, uid),
         social.fetchSavesLikes(db, uid),
+        social.fetchCollections(db, uid),
       ]);
       if (cancelled) return;
       setInterestsState(ints);
@@ -133,6 +146,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setConversations(convos);
       setSaves(sl.saves);
       setLikes(sl.likes);
+      setCollections(cols);
       setOnboarded(true);
       setStatus('ready');
     };
@@ -334,6 +348,76 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return ids.map((id) => MOCK_STORIES.find((s) => s.id === id)).filter(Boolean) as Story[];
   }, [me]);
 
+  // ---- Collections (folders for saved stories) ----
+
+  const refreshCollections = useCallback(async () => {
+    const db = supabaseBrowser();
+    if (db && me) setCollections(await social.fetchCollections(db, me.id));
+  }, [me]);
+
+  const createCollection = useCallback(async (name: string): Promise<{ id?: string; error?: string }> => {
+    const trimmed = name.trim();
+    if (!trimmed) return { error: 'Give the collection a name.' };
+    const db = supabaseBrowser();
+    if (db && me) {
+      const res = await social.createCollectionRemote(db, me.id, trimmed);
+      if (res.error) return res;
+      await refreshCollections();
+      return res;
+    }
+    // Demo mode keeps them in memory so the flow is still explorable.
+    const id = `local-${Date.now()}`;
+    setCollections((prev) => [...prev, { id, name: trimmed, count: 0 }].sort((a, b) => a.name.localeCompare(b.name)));
+    return { id };
+  }, [me, refreshCollections]);
+
+  const deleteCollection = useCallback(async (id: string) => {
+    setCollections((prev) => prev.filter((c) => c.id !== id));
+    const db = supabaseBrowser();
+    if (db && me) await social.deleteCollectionRemote(db, me.id, id);
+    else mockCollectionItemsRef.current.delete(id);
+  }, [me]);
+
+  const collectionsForStory = useCallback(async (storyId: string): Promise<Set<string>> => {
+    const db = supabaseBrowser();
+    if (db && me) return social.fetchCollectionsForStory(db, me.id, storyId);
+    const out = new Set<string>();
+    mockCollectionItemsRef.current.forEach((ids, cid) => { if (ids.has(storyId)) out.add(cid); });
+    return out;
+  }, [me]);
+
+  const setInCollection = useCallback(async (collectionId: string, storyId: string, member: boolean) => {
+    setCollections((prev) => prev.map((c) =>
+      c.id === collectionId ? { ...c, count: Math.max(0, c.count + (member ? 1 : -1)) } : c
+    ));
+    const db = supabaseBrowser();
+    if (db && me) { await social.setStoryInCollection(db, collectionId, storyId, member); return; }
+    const set = mockCollectionItemsRef.current.get(collectionId) ?? new Set<string>();
+    member ? set.add(storyId) : set.delete(storyId);
+    mockCollectionItemsRef.current.set(collectionId, set);
+  }, [me]);
+
+  const loadCollectionStories = useCallback(async (collectionId: string): Promise<Story[]> => {
+    const db = supabaseBrowser();
+    if (db && me) return social.fetchCollectionStories(db, collectionId);
+    const ids = Array.from(mockCollectionItemsRef.current.get(collectionId) ?? []);
+    return ids.map((id) => MOCK_STORIES.find((s) => s.id === id)).filter(Boolean) as Story[];
+  }, [me]);
+
+  // ---- Reading history ----
+
+  const recordView = useCallback((storyId: string) => {
+    const db = supabaseBrowser();
+    // Fire and forget: reading should never wait on bookkeeping.
+    if (db && me) social.recordViewRemote(db, me.id, storyId);
+  }, [me]);
+
+  const loadReadingSummary = useCallback(async (): Promise<ReadingSummary | null> => {
+    const db = supabaseBrowser();
+    if (db && me) return social.fetchReadingSummary(db, me.id);
+    return null;
+  }, [me]);
+
   const loadThread = useCallback(async (otherId: string): Promise<Message[]> => {
     const db = supabaseBrowser();
     if (db && me) return social.fetchThread(db, me.id, otherId);
@@ -464,7 +548,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     configured, status, canAct, signInPrompt, promptSignIn, dismissSignInPrompt, unreadCount,
     signInWithEmail, signOut, completeOnboarding, updateProfile, setInterests, toggleSource, toggleSave, toggleLike,
     sendFriendRequest, acceptFriend, declineFriend, shareToFriend,
-    loadStoriesByIds, loadThread, sendMessage, markConversationRead,
+    loadStoriesByIds, collections, refreshCollections, createCollection, deleteCollection,
+    collectionsForStory, setInCollection, loadCollectionStories, recordView, loadReadingSummary,
+    loadThread, sendMessage, markConversationRead,
     blockUser, unblockUser, listBlocked, deleteAccount,
     addComment, likeComment, ensureComments,
   };

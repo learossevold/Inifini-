@@ -214,6 +214,35 @@ create table if not exists story_likes (
   primary key (story_id, user_id)
 );
 
+-- ---------- COLLECTIONS ----------
+-- Folders for saved stories. Saving always adds to story_saves; a collection
+-- is an optional extra shelf, so a story can sit in none, one or several.
+create table if not exists collections (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  name text not null,
+  created_at timestamptz not null default now(),
+  unique (user_id, name)
+);
+
+create table if not exists collection_items (
+  collection_id uuid not null references collections(id) on delete cascade,
+  story_id uuid not null references stories(id) on delete cascade,
+  added_at timestamptz not null default now(),
+  primary key (collection_id, story_id)
+);
+
+-- ---------- READING HISTORY ----------
+-- One row per story a reader opens, used only to show them their own month.
+-- Never aggregated across users, never shown to anyone else.
+create table if not exists story_views (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  story_id uuid not null references stories(id) on delete cascade,
+  viewed_at timestamptz not null default now(),
+  primary key (user_id, story_id)
+);
+create index if not exists story_views_recent_idx on story_views (user_id, viewed_at desc);
+
 -- ---------- COMMENTS ----------
 create table if not exists comments (
   id uuid primary key default gen_random_uuid(),
@@ -243,6 +272,9 @@ alter table shared_stories enable row level security;
 alter table messages enable row level security;
 alter table blocks enable row level security;
 alter table push_subscriptions enable row level security;
+alter table collections enable row level security;
+alter table collection_items enable row level security;
+alter table story_views enable row level security;
 alter table story_saves enable row level security;
 alter table story_likes enable row level security;
 alter table comments enable row level security;
@@ -313,6 +345,20 @@ create policy "send message" on messages for insert with check (
 );
 drop policy if exists "mark message read" on messages;
 create policy "mark message read" on messages for update using (auth.uid() = recipient_id);
+
+-- Collections: owner only. Items are reachable only through a collection the
+-- caller owns, which is what the subquery checks.
+drop policy if exists "manage own collections" on collections;
+create policy "manage own collections" on collections for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "manage own collection items" on collection_items;
+create policy "manage own collection items" on collection_items for all
+  using (exists (select 1 from collections c where c.id = collection_id and c.user_id = auth.uid()))
+  with check (exists (select 1 from collections c where c.id = collection_id and c.user_id = auth.uid()));
+
+-- Reading history: strictly your own, never readable by anyone else.
+drop policy if exists "manage own reading history" on story_views;
+create policy "manage own reading history" on story_views for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 -- Saves / likes: owner only
 drop policy if exists "manage own saves" on story_saves;
