@@ -33,12 +33,23 @@ export async function GET(req: NextRequest) {
   }
 
   const admin = supabaseAdmin(); // waitlist has no public select policy — needs the service role key
-  const [{ count: storyCount }, { data: sources }, { data: recent }, waitlistRes] = await Promise.all([
-    db.from('stories').select('*', { count: 'exact', head: true }),
-    db.from('sources').select('name, domain, active, last_status, last_fetched_at').order('name'),
-    db.from('stories').select('title, source_name, published_at, is_demo, fetched_at').order('fetched_at', { ascending: false }).limit(10),
-    admin ? admin.from('waitlist').select('*', { count: 'exact', head: true }) : Promise.resolve({ count: 0 }),
-  ]);
+
+  // Without this the page had no way to say what went wrong: a throw here
+  // became an HTML 500 that the client could only report as "could not load".
+  let storyCount: number | null | undefined;
+  let sources: any[] | null;
+  let recent: any[] | null;
+  let waitlistRes: { count?: number | null };
+  try {
+    [{ count: storyCount }, { data: sources }, { data: recent }, waitlistRes] = await Promise.all([
+      db.from('stories').select('*', { count: 'exact', head: true }),
+      db.from('sources').select('name, domain, active, last_status, last_fetched_at').order('name'),
+      db.from('stories').select('title, source_name, published_at, is_demo, fetched_at').order('fetched_at', { ascending: false }).limit(10),
+      admin ? admin.from('waitlist').select('*', { count: 'exact', head: true }) : Promise.resolve({ count: 0 }),
+    ]);
+  } catch (e: any) {
+    return NextResponse.json({ error: `Database query failed: ${e?.message ?? 'unknown'}` }, { status: 500 });
+  }
 
   const lastIngestion = sources?.reduce<string | null>((acc, s: any) => {
     if (!s.last_fetched_at) return acc;
