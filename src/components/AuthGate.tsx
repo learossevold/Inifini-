@@ -18,6 +18,9 @@ export default function AuthGate({ children }: { children: ReactNode }) {
   const { configured, status } = useSession();
   const pathname = usePathname();
   const router = useRouter();
+  // These pages have no bottom nav (see BottomNav), so the space it reserves
+  // would just be a dead gap under their own footer.
+  const noChrome = pathname === '/onboarding' || pathname === '/coming-soon';
 
   useEffect(() => {
     if (configured && status === 'needs-onboarding' && pathname !== '/onboarding') {
@@ -34,7 +37,7 @@ export default function AuthGate({ children }: { children: ReactNode }) {
       {/* app-shell carries the full-height rule in dvh, so on iOS it tracks the
           viewport that is actually visible rather than the taller one Safari
           reports before its address bar collapses. */}
-      <div className="app-shell mx-auto max-w-md pb-16">{children}</div>
+      <div className={`app-shell mx-auto max-w-md ${noChrome ? '' : 'pb-16'}`}>{children}</div>
       <BottomNav />
       <SignInPrompt />
     </>

@@ -62,7 +62,17 @@ html.watch-lock .app-shell {
    while the cards around it keep their hard snap. */
 .snap-soft { scroll-snap-align: start; }
 
+/* Coming-soon ticker: the strip's content is duplicated once in the markup,
+   and this slides it exactly one copy's width to the left before looping, so
+   the seam between the end of one copy and the start of the next is invisible. */
+.marquee-track { animation: marquee 26s linear infinite; }
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .marquee-track { animation: none; }
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
   html { scroll-behavior: auto; }
 }

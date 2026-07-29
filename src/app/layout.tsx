@@ -5,7 +5,10 @@ import { SessionProvider } from '@/lib/session';
 import AuthGate from '@/components/AuthGate';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' });
-const fraunces = Fraunces({ subsets: ['latin'], variable: '--font-fraunces', display: 'swap', axes: ['opsz'] });
+// italic is only downloaded by the browser on the pages that actually render
+// it (the coming-soon headline's swash "right now."), so this costs nothing
+// on every other page.
+const fraunces = Fraunces({ subsets: ['latin'], variable: '--font-fraunces', display: 'swap', axes: ['opsz'], style: ['normal', 'italic'] });
 
 export const metadata: Metadata = {
   title: 'Inifini',
