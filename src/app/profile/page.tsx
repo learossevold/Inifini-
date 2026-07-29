@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { useEffect, useState } from 'react';
-import { CATEGORIES, Category, Story } from '@/lib/types';
+import { CATEGORIES, Category, ReadingSummary, Story } from '@/lib/types';
 import { useSession } from '@/lib/session';
 import { RSS_SOURCES } from '@/config/sources';
 import { Avatar, categoryLabel, timeAgo } from '@/components/ui';
@@ -55,6 +55,7 @@ export default function ProfilePage() {
   const {
     me, interests, setInterests, followedSources, toggleSource,
     saves, likes, configured, canAct, promptSignIn, loadStoriesByIds, signOut,
+    collections, deleteCollection, loadCollectionStories, loadReadingSummary,
   } = useSession();
 
   const [panel, setPanel] = useState<Panel>('saved');
@@ -62,6 +63,9 @@ export default function ProfilePage() {
   const [likedStories, setLikedStories] = useState<Story[] | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [openCollection, setOpenCollection] = useState<string | null>(null);
+  const [collectionStories, setCollectionStories] = useState<Story[] | null>(null);
+  const [reading, setReading] = useState<ReadingSummary | null>(null);
 
   // Saved and liked ids are resolved against the database, not the demo set,
   // so they work for real accounts.
@@ -76,6 +80,20 @@ export default function ProfilePage() {
     loadStoriesByIds(Array.from(likes)).then((s) => { if (!cancelled) setLikedStories(s); });
     return () => { cancelled = true; };
   }, [likes, loadStoriesByIds]);
+
+  useEffect(() => {
+    if (!openCollection) { setCollectionStories(null); return; }
+    let cancelled = false;
+    setCollectionStories(null);
+    loadCollectionStories(openCollection).then((s) => { if (!cancelled) setCollectionStories(s); });
+    return () => { cancelled = true; };
+  }, [openCollection, loadCollectionStories]);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadReadingSummary().then((r) => { if (!cancelled) setReading(r); });
+    return () => { cancelled = true; };
+  }, [loadReadingSummary]);
 
   const toggleInterest = (c: Category) =>
     setInterests(interests.includes(c) ? interests.filter((x) => x !== c) : [...interests, c]);
@@ -160,6 +178,40 @@ export default function ProfilePage() {
         </dl>
       </section>
 
+      {/* Your own month, never compared to anyone else's. */}
+      {reading && reading.storiesRead > 0 && (
+        <section className="mx-5 mt-6 rounded-xl border border-rule bg-white/60 px-4 py-4">
+          <h2 className="font-sans text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+            Your reading this month
+          </h2>
+          <p className="mt-2 font-serif text-[17px] leading-snug">
+            <span className="font-bold">{reading.storiesRead}</span>{' '}
+            {reading.storiesRead === 1 ? 'story' : 'stories'}, about{' '}
+            <span className="font-bold">{reading.minutes}</span> minutes of reading.
+          </p>
+
+          {reading.topCategories.length > 0 && (
+            <div className="mt-3">
+              <p className="text-[12px] text-muted">Mostly about</p>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {reading.topCategories.map((c) => (
+                  <span key={c.id} className="rounded-full bg-accentSoft px-3 py-1 text-[12.5px] font-medium text-accent">
+                    {c.label} · {c.count}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {reading.topSources.length > 0 && (
+            <div className="mt-3">
+              <p className="text-[12px] text-muted">Mostly from</p>
+              <p className="mt-0.5 text-[13.5px]">{reading.topSources.map((s) => s.name).join(', ')}</p>
+            </div>
+          )}
+        </section>
+      )}
+
       {/* Panels */}
       <nav className="mt-6 flex border-b border-rule" role="tablist">
         {(['saved', 'liked', 'interests'] as Panel[]).map((p) => (
@@ -179,13 +231,54 @@ export default function ProfilePage() {
 
       <div className="px-5">
         {panel === 'saved' && (
-          savedStories === null ? (
-            <p className="py-10 text-center text-[14px] text-muted">Loading…</p>
-          ) : savedStories.length === 0 ? (
-            <p className="py-10 text-center text-[14px] text-muted">Tap the bookmark on any story to keep it here.</p>
-          ) : (
-            <ul className="divide-y divide-rule">{savedStories.map((s) => <StoryRow key={s.id} story={s} />)}</ul>
-          )
+          <>
+            {/* Collections first, as shelves above the full list. */}
+            {collections.length > 0 && (
+              <div className="no-scrollbar -mx-5 flex gap-2 overflow-x-auto px-5 pt-4">
+                <button
+                  onClick={() => setOpenCollection(null)}
+                  aria-pressed={openCollection === null}
+                  className={`shrink-0 rounded-full border px-3.5 py-1.5 text-[13px] ${openCollection === null ? 'border-accent bg-accentSoft font-semibold text-accent' : 'border-rule'}`}
+                >
+                  All saved
+                </button>
+                {collections.map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => setOpenCollection(c.id)}
+                    aria-pressed={openCollection === c.id}
+                    className={`shrink-0 rounded-full border px-3.5 py-1.5 text-[13px] ${openCollection === c.id ? 'border-accent bg-accentSoft font-semibold text-accent' : 'border-rule'}`}
+                  >
+                    {c.name} · {c.count}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {(() => {
+              const list = openCollection === null ? savedStories : collectionStories;
+              if (list === null) return <p className="py-10 text-center text-[14px] text-muted">Loading…</p>;
+              if (list.length === 0) {
+                return (
+                  <p className="py-10 text-center text-[14px] text-muted">
+                    {openCollection === null
+                      ? 'Tap the bookmark on any story to keep it here.'
+                      : 'Nothing in this collection yet.'}
+                  </p>
+                );
+              }
+              return <ul className="divide-y divide-rule">{list.map((s) => <StoryRow key={s.id} story={s} />)}</ul>;
+            })()}
+
+            {openCollection && (
+              <button
+                onClick={async () => { await deleteCollection(openCollection); setOpenCollection(null); }}
+                className="mb-4 mt-2 w-full py-2 text-[13px] font-medium text-accent"
+              >
+                Delete this collection
+              </button>
+            )}
+          </>
         )}
 
         {panel === 'liked' && (
