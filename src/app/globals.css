@@ -47,6 +47,11 @@ html.watch-lock .app-shell {
   padding-bottom: 0;
 }
 
+/* Freezes an animation in place instead of removing it. Taking an animation
+   class off an element snaps it back to its untransformed state in a single
+   frame, which is what made the Watch images pop as they scrolled past. */
+.anim-paused { animation-play-state: paused; }
+
 .snap-y-screen { scroll-snap-type: y mandatory; }
 .snap-screen { scroll-snap-align: start; scroll-snap-stop: always; }
 

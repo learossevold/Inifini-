@@ -19,7 +19,7 @@ async function handle(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized. Set ADMIN_PASSWORD and send it as the x-admin-password header (or CRON_SECRET as a bearer token).' }, { status: 401 });
   }
   try {
-    const result = await runIngestion(5);
+    const result = await runIngestion();
     return NextResponse.json(result);
   } catch (e: any) {
     // This endpoint is admin-only, so surface enough to diagnose rather than

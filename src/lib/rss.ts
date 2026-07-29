@@ -309,7 +309,7 @@ async function fetchFeed(rssUrl: string, timeoutMs: number): Promise<RssItem[]> 
   return (feed.items ?? []) as RssItem[];
 }
 
-export async function runIngestion(maxPerSource = 5): Promise<IngestResult> {
+export async function runIngestion(maxPerSource = 8): Promise<IngestResult> {
   const startedAt = Date.now();
   const db = supabaseAdmin();
   const result: IngestResult = {
@@ -329,6 +329,12 @@ export async function runIngestion(maxPerSource = 5): Promise<IngestResult> {
   const feeds = await Promise.allSettled(sources.map((s) => fetchFeed(s.rss_url, 12_000)));
 
   // ── 2. Build candidate rows from successful feeds. ─────────────────────────
+  // Sport feeds publish far more often than the others (every fixture is an
+  // item), so an equal per-source cap let sport quietly eat a fifth of every
+  // run and cluster at the top of "recently imported" simply by being
+  // freshest. Capping it below the general limit keeps it in proportion with
+  // how much of the paper it should actually be.
+  const SPORT_CAP = 3;
   const candidates: Candidate[] = [];
   feeds.forEach((res, i) => {
     const source = sources[i];
@@ -336,7 +342,8 @@ export async function runIngestion(maxPerSource = 5): Promise<IngestResult> {
       result.errors.push({ source: source.name, error: res.reason?.message ?? 'fetch failed' });
       return;
     }
-    const items = res.value.slice(0, maxPerSource);
+    const perSourceLimit = source.category === 'sport' ? Math.min(maxPerSource, SPORT_CAP) : maxPerSource;
+    const items = res.value.slice(0, perSourceLimit);
     result.fetched += items.length;
 
     for (const item of items) {
@@ -466,6 +473,15 @@ export async function runIngestion(maxPerSource = 5): Promise<IngestResult> {
         : `error: ${(feeds[i] as PromiseRejectedResult).reason?.message ?? 'unknown'}`,
   }));
   await db.from('sources').upsert(sourceStatus, { onConflict: 'rss_url' });
+
+  // upsert never removes rows, so a source deleted from config stays in the
+  // table forever showing stale "no runs yet" status. Prune anything whose
+  // URL is no longer in RSS_SOURCES — checked against the full config, active
+  // or not, so a source only temporarily switched off doesn't lose its row.
+  const configuredUrls = RSS_SOURCES.map((s) => s.rss_url);
+  if (configuredUrls.length) {
+    await db.from('sources').delete().not('rss_url', 'in', `(${configuredUrls.map((u) => `"${u}"`).join(',')})`);
+  }
 
   result.durationMs = Date.now() - startedAt;
   return result;
