@@ -1,6 +1,7 @@
 import Parser from 'rss-parser';
 import { RSS_SOURCES } from '@/config/sources';
 import { summarizeStory } from './summarize';
+import { upgradeImageUrl } from './images';
 import { supabaseAdmin } from './supabase';
 import { Category, Story } from './types';
 
@@ -19,7 +20,7 @@ import { Category, Story } from './types';
 
 // rss-parser item shape with the media extensions we ask for below.
 interface MediaNode {
-  $?: { url?: string; medium?: string; type?: string };
+  $?: { url?: string; medium?: string; type?: string; width?: string; height?: string };
 }
 interface RssItem {
   title?: string;
@@ -224,29 +225,39 @@ function pickFallback(category: Category, title: string): string {
   return pool[Math.abs(hash(title)) % pool.length];
 }
 
-/** Pick the best available image for a feed item, falling back per category. */
-/** Returns the RSS image url, or null if none found (caller handles fallback). */
-function extractRssImage(item: RssItem): string | null {
-  // 1. Standard <enclosure> image
-  if (looksLikeImage(item.enclosure?.url, item.enclosure?.type)) return item.enclosure!.url!;
+function widthOf(m: MediaNode): number {
+  const w = Number(m.$?.width);
+  return Number.isFinite(w) ? w : 0;
+}
 
-  // 2. <media:content> (often the highest-quality asset)
+/**
+ * Best available image for a feed item, or null when there is none (the caller
+ * substitutes a sharp category image). Prefers the largest asset offered rather
+ * than the first, which is often the smallest thumbnail in the list.
+ */
+function extractRssImage(item: RssItem): string | null {
+  const candidates: { url: string; width: number }[] = [];
+
+  if (looksLikeImage(item.enclosure?.url, item.enclosure?.type)) {
+    candidates.push({ url: item.enclosure!.url!, width: 0 });
+  }
   for (const m of asMediaArray(item.mediaContent)) {
     const url = m.$?.url;
-    if (url && (m.$?.medium === 'image' || looksLikeImage(url, m.$?.type))) return url;
+    if (url && (m.$?.medium === 'image' || looksLikeImage(url, m.$?.type))) {
+      candidates.push({ url, width: widthOf(m) });
+    }
   }
-
-  // 3. <media:thumbnail>
   for (const m of asMediaArray(item.mediaThumbnail)) {
-    if (m.$?.url) return m.$.url;
+    if (m.$?.url) candidates.push({ url: m.$.url, width: widthOf(m) });
+  }
+  const match = (item.content ?? '').match(/<img[^>]+src=["']([^"']+)["']/i);
+  if (match && /^https?:\/\//.test(match[1])) {
+    candidates.push({ url: match[1], width: 0 });
   }
 
-  // 4. First <img> embedded in the description/content HTML
-  const html = item.content ?? '';
-  const match = html.match(/<img[^>]+src=["']([^"']+)["']/i);
-  if (match && /^https?:\/\//.test(match[1])) return match[1];
-
-  return null;
+  if (candidates.length === 0) return null;
+  candidates.sort((a, b) => b.width - a.width);
+  return upgradeImageUrl(candidates[0].url);
 }
 
 /**
