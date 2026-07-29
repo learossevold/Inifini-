@@ -14,10 +14,22 @@ interface Stats {
   recentStories: { title: string; source_name: string; published_at: string; is_demo: boolean }[];
 }
 
+/** How old a story is, so "are we importing today's news?" is answerable at a glance. */
+function ageDays(iso: string): number {
+  return (Date.now() - new Date(iso).getTime()) / 86_400_000;
+}
+function ageLabel(iso: string): string {
+  const days = ageDays(iso);
+  if (days < 1 / 24) return 'just now';
+  if (days < 1) return `${Math.round(days * 24)}h old`;
+  return `${Math.round(days)} days old`;
+}
+
 export default function AdminPage() {
   const [password, setPassword] = useState('');
   const [authed, setAuthed] = useState(false);
   const [stats, setStats] = useState<Stats | null>(null);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ingesting, setIngesting] = useState(false);
   const [ingestResult, setIngestResult] = useState<string | null>(null);
@@ -28,21 +40,39 @@ export default function AdminPage() {
   const [pushing, setPushing] = useState(false);
   const [pushResult, setPushResult] = useState<string | null>(null);
 
+  // Nothing here used to report a slow or failed request: no loading state, no
+  // timeout, and a throw from fetch went unhandled, so the page just sat there.
+  // Now every outcome ends in either stats or a message on screen.
   const loadStats = useCallback(async (pw: string) => {
     setError(null);
-    const res = await fetch('/api/admin-stats', { headers: { 'x-admin-password': pw } });
-    if (res.status === 401) {
-      setAuthed(false);
-      setError('Wrong password (or ADMIN_PASSWORD not set in production).');
-      return;
+    setLoading(true);
+    try {
+      const res = await fetch('/api/admin-stats', {
+        headers: { 'x-admin-password': pw },
+        signal: AbortSignal.timeout(20_000),
+      });
+      if (res.status === 401) {
+        setAuthed(false);
+        setError('Wrong password (or ADMIN_PASSWORD not set in production).');
+        return;
+      }
+      if (!res.ok) {
+        const detail = await res.text().catch(() => '');
+        setError(`Could not load stats (HTTP ${res.status}). ${detail.slice(0, 200)}`);
+        return;
+      }
+      setStats(await res.json());
+      setAuthed(true);
+      sessionStorage.setItem('admin-pw', pw);
+    } catch (e: any) {
+      setError(
+        e?.name === 'TimeoutError' || e?.name === 'AbortError'
+          ? 'Stats took longer than 20s and were given up on. The database is most likely slow or unreachable.'
+          : `Could not reach the server: ${e?.message ?? 'unknown error'}`
+      );
+    } finally {
+      setLoading(false);
     }
-    if (!res.ok) {
-      setError('Could not load stats.');
-      return;
-    }
-    setStats(await res.json());
-    setAuthed(true);
-    sessionStorage.setItem('admin-pw', pw);
   }, []);
 
   useEffect(() => {
@@ -144,8 +174,8 @@ export default function AdminPage() {
           className="mt-4 w-full rounded-md border border-rule bg-white px-3 py-2.5"
           placeholder="Password"
         />
-        <button onClick={() => loadStats(password)} className="mt-3 w-full rounded-md bg-ink py-2.5 font-medium text-paper">
-          Open admin
+        <button onClick={() => loadStats(password)} disabled={loading} className="mt-3 w-full rounded-md bg-ink py-2.5 font-medium text-paper disabled:opacity-60">
+          {loading ? 'Loading…' : 'Open admin'}
         </button>
         {error && <p className="mt-3 text-sm text-accent">{error}</p>}
         <Link href="/" className="mt-6 block text-sm text-muted underline">← Back to the paper</Link>
@@ -159,6 +189,8 @@ export default function AdminPage() {
         <h1 className="font-serif text-2xl font-bold">Admin</h1>
         <Link href="/" className="text-muted underline">← Inifini</Link>
       </div>
+
+      {error && <p className="mt-4 rounded-md border border-accent px-3 py-2 text-accent">{error}</p>}
 
       {stats && (
         <>
@@ -233,7 +265,7 @@ export default function AdminPage() {
               <div key={i} className="rounded-md border border-rule bg-white/60 px-4 py-2.5">
                 <p className="font-medium leading-snug">{s.title}</p>
                 <p className="text-[12px] text-muted">
-                  {s.source_name} · {new Date(s.published_at).toLocaleString()} {s.is_demo && '· DEMO'}
+                  {s.source_name} · {new Date(s.published_at).toLocaleString()} · <span className={ageDays(s.published_at) > 3 ? 'font-semibold text-accent' : ''}>{ageLabel(s.published_at)}</span> {s.is_demo && '· DEMO'}
                 </p>
               </div>
             ))}

@@ -13,6 +13,22 @@ function recencyScore(publishedAt: string): number {
   return 100 * Math.pow(0.5, hours / 12);
 }
 
+/**
+ * recencyScore halves every 12 hours, so by day four it is indistinguishable
+ * from zero: past that point two stories a month apart scored the same on
+ * recency and importance alone decided the order. That is how a three-week-old
+ * story ended up above this morning's news.
+ *
+ * The penalty grows with age instead of bottoming out, so old stories sink.
+ * It is capped rather than disqualifying: if ingestion ever stalls, a stale
+ * feed is still better than an empty one.
+ */
+function agePenalty(publishedAt: string): number {
+  const days = (Date.now() - new Date(publishedAt).getTime()) / 86_400_000;
+  if (days <= 2) return 0;
+  return Math.min(60, (days - 2) * 6);
+}
+
 export function scoreStory(story: Story, selected: Category | 'top' = 'top'): number {
   const recency = recencyScore(story.published_at);
   const interestBoost = selected !== 'top' && story.category === selected ? 25 : 0;
@@ -20,7 +36,7 @@ export function scoreStory(story: Story, selected: Category | 'top' = 'top'): nu
   return (
     recency * 0.3 + story.importance_score * 0.28 + story.novelty_score * 0.1 +
     (CATEGORY_PRIORITY[story.category] ?? 30) * 0.12 + trustFor(story.source_domain) * 0.08 +
-    story.relevance_score * 0.12 + interestBoost + breakingBoost
+    story.relevance_score * 0.12 + interestBoost + breakingBoost - agePenalty(story.published_at)
   );
 }
 
