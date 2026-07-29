@@ -28,7 +28,7 @@ export default function StoryCard({
             <Image src={story.image_url!} alt="" fill sizes="448px" className="object-cover" onError={() => setImgFailed(true)} unoptimized />
           </div>
         ) : (
-          <div className={`flex w-full items-end rounded-lg bg-[#F0EDE5] p-4 ${lead ? 'aspect-[4/3]' : 'aspect-[16/10]'}`} aria-hidden>
+          <div className={`flex w-full items-end rounded-lg bg-[#EDEDF3] p-4 ${lead ? 'aspect-[4/3]' : 'aspect-[16/10]'}`} aria-hidden>
             <span className="font-serif italic text-2xl text-rule">{story.source_name}</span>
           </div>
         )}

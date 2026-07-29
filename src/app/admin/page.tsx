@@ -9,6 +9,7 @@ interface Stats {
   sourceCount: number;
   lastIngestion: string | null;
   aiEngine: string;
+  waitlistCount: number;
   sources: { name: string; domain: string; active: boolean; last_status: string | null; last_fetched_at: string | null }[];
   recentStories: { title: string; source_name: string; published_at: string; is_demo: boolean }[];
 }
@@ -20,6 +21,12 @@ export default function AdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [ingesting, setIngesting] = useState(false);
   const [ingestResult, setIngestResult] = useState<string | null>(null);
+  const [narrating, setNarrating] = useState(false);
+  const [narrateResult, setNarrateResult] = useState<string | null>(null);
+  const [resumming, setResumming] = useState(false);
+  const [resummarizeResult, setResummarizeResult] = useState<string | null>(null);
+  const [pushing, setPushing] = useState(false);
+  const [pushResult, setPushResult] = useState<string | null>(null);
 
   const loadStats = useCallback(async (pw: string) => {
     setError(null);
@@ -67,6 +74,63 @@ export default function AdminPage() {
     }
   };
 
+  // Existing stories keep whatever summary they were ingested with. This
+  // rewrites the short ones — the way to backfill after adding an AI key.
+  const triggerResummarize = async () => {
+    setResumming(true);
+    setResummarizeResult(null);
+    try {
+      const res = await fetch('/api/ingest/resummarize', { method: 'POST', headers: { 'x-admin-password': password } });
+      const data = await res.json();
+      setResummarizeResult(
+        res.ok
+          ? data.message ?? `Rewrote ${data.updated}/${data.total} short summaries, ${data.failed} failed. Run again for the next batch.`
+          : `Failed: ${data.error}`
+      );
+      await loadStats(password);
+    } catch {
+      setResummarizeResult('Re-summarize request failed.');
+    } finally {
+      setResumming(false);
+    }
+  };
+
+  const triggerNarration = async () => {
+    setNarrating(true);
+    setNarrateResult(null);
+    try {
+      const res = await fetch('/api/ingest/narrate', { method: 'POST', headers: { 'x-admin-password': password } });
+      const data = await res.json();
+      setNarrateResult(
+        res.ok
+          ? data.message ?? `Narrated ${data.narrated}/${data.total}, ${data.failed} failed.`
+          : `Failed: ${data.error}`
+      );
+    } catch {
+      setNarrateResult('Narration request failed.');
+    } finally {
+      setNarrating(false);
+    }
+  };
+
+  const triggerPush = async () => {
+    setPushing(true);
+    setPushResult(null);
+    try {
+      const res = await fetch('/api/push/send', { method: 'POST', headers: { 'x-admin-password': password } });
+      const data = await res.json();
+      setPushResult(
+        res.ok
+          ? data.message ?? `Sent to ${data.sent}/${data.total} devices${data.removed ? `, ${data.removed} stale removed` : ''}. Story: ${data.story}`
+          : `Failed: ${data.error}`
+      );
+    } catch {
+      setPushResult('Send request failed.');
+    } finally {
+      setPushing(false);
+    }
+  };
+
   if (!authed) {
     return (
       <main className="mx-auto max-w-sm px-5 py-16 font-sans">
@@ -105,6 +169,7 @@ export default function AdminPage() {
               ['Last ingestion', stats.lastIngestion ? new Date(stats.lastIngestion).toLocaleString() : 'never'],
               ['AI engine', stats.aiEngine],
               ['Data mode', stats.mode],
+              ['Waitlist signups', String(stats.waitlistCount)],
             ].map(([k, v]) => (
               <div key={k} className="rounded-md border border-rule bg-white/60 px-4 py-3">
                 <p className="text-[11px] uppercase tracking-wider text-muted">{k}</p>
@@ -121,6 +186,33 @@ export default function AdminPage() {
             {ingesting ? 'Ingesting… (fetching feeds + generating summaries)' : 'Run ingestion now'}
           </button>
           {ingestResult && <p className="mt-3 rounded-md bg-accentSoft px-3 py-2">{ingestResult}</p>}
+
+          <button
+            onClick={triggerResummarize}
+            disabled={resumming}
+            className="mt-3 w-full rounded-md border border-ink bg-white py-3 font-medium text-ink disabled:opacity-60"
+          >
+            {resumming ? 'Rewriting… (generating longer summaries)' : 'Rewrite short summaries'}
+          </button>
+          {resummarizeResult && <p className="mt-3 rounded-md bg-accentSoft px-3 py-2">{resummarizeResult}</p>}
+
+          <button
+            onClick={triggerNarration}
+            disabled={narrating}
+            className="mt-3 w-full rounded-md border border-ink bg-white py-3 font-medium text-ink disabled:opacity-60"
+          >
+            {narrating ? 'Narrating… (generating Watch audio)' : 'Generate Watch narration'}
+          </button>
+          {narrateResult && <p className="mt-3 rounded-md bg-accentSoft px-3 py-2">{narrateResult}</p>}
+
+          <button
+            onClick={triggerPush}
+            disabled={pushing}
+            className="mt-3 w-full rounded-md border border-ink bg-white py-3 font-medium text-ink disabled:opacity-60"
+          >
+            {pushing ? 'Sending…' : 'Send morning brief now'}
+          </button>
+          {pushResult && <p className="mt-3 rounded-md bg-accentSoft px-3 py-2">{pushResult}</p>}
 
           <h2 className="mt-8 font-serif text-lg font-bold">Source status</h2>
           <div className="mt-3 space-y-2">

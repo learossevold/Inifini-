@@ -39,7 +39,8 @@ Copy `.env.example` to `.env.local` and fill in what you have:
 | `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | optional | Database + auth. Without them, the app runs on mock data. |
 | `SUPABASE_SERVICE_ROLE_KEY` | optional | Server-only write key for ingestion. |
 | `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` | optional | Real AI summaries. Checked Anthropic-first. |
-| `OPENAI_API_KEY_TTS` | optional | Reserved for Watch-tab narration audio. Without it, Watch uses silent caption cards. |
+| `OPENAI_API_KEY_TTS` | optional | Powers Watch-tab AI narration audio. Without it, Watch uses silent caption cards. Needs a Supabase Storage bucket, which `/api/ingest/narrate` creates automatically on first run. |
+| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_CONTACT_EMAIL` | optional | The daily morning-brief push notification. Generate a pair with `npx web-push generate-vapid-keys`. Without them the toggle stays hidden and nothing is sent. |
 
 ## 5. Set up Supabase
 
@@ -52,19 +53,21 @@ Copy `.env.example` to `.env.local` and fill in what you have:
 
 With Supabase configured: open `/admin`, enter `ADMIN_PASSWORD`, click **Run ingestion now**. It pulls the RSS feeds in `src/config/sources.ts` (titles/excerpts/links only — never full articles, all credited and linked), dedupes, generates AI (or mock) summaries, scores them, and stores them. Edit that one file to add/remove sources.
 
+With `OPENAI_API_KEY_TTS` also set, click **Generate Watch narration** on the same page (or wait for its daily cron) to read the newest stories' summaries aloud for the Watch tab — a real voice over the story's own photo, never fabricated video.
+
 ## 7. Deploy to Vercel
 
 Push to GitHub → import at vercel.com/new → add the environment variables under Settings → redeploy. Vercel-ready, no extra config.
 
 ## 8. What's working / what needs improvement
 
-**Working:** all three feed tabs, infinite scroll, inline article view (feed continues below), saving/liking, threaded comments with word-filter, mutual friend requests, sharing to a friend, notifications inbox, search, profile with editable interests, onboarding, admin ingestion, full mock mode.
+**Working:** all three feed tabs, infinite scroll, inline article view (feed continues below), saving/liking, threaded comments with word-filter, mutual friend requests, sharing to a friend, notifications inbox, search, profile with editable interests and followed sources, onboarding, admin ingestion, real magic-link auth + a fully Supabase-backed social layer (friends/comments/shares/saves/likes), Watch-tab AI narration audio (with `OPENAI_API_KEY_TTS` set), full mock mode with zero keys.
 
 **Needs improvement / next:**
-- The social layer runs in-memory in demo mode. Wiring the `session` methods to real Supabase calls is the main step to make friends/comments/shares persist across users.
-- Watch-tab narration audio is stubbed (caption cards). Add a TTS step in ingestion to populate `video_url`.
-- Magic-link auth UI is described but uses the mock user until Supabase Auth is connected.
-- Real-time comment updates would need Supabase subscriptions.
+- Real-time comment updates would need Supabase subscriptions (currently loads once per story open).
+- Ranking is fixed rather than learned — it does not adapt to what a reader actually opens.
+- On iOS, push notifications only work once the app is added to the Home Screen (an Apple restriction, surfaced in the UI).
+- Watch narration currently runs once daily via cron, or on demand from `/admin` — a paid Vercel plan lets you tighten `vercel.json`'s `/api/ingest/narrate` schedule to run more often.
 
 ## 9. Test checklist (do these on a phone)
 
@@ -93,7 +96,7 @@ Right now the feed shows realistic demo stories. To switch to live news from NRK
 2. Add the three Supabase keys + `ADMIN_PASSWORD` to your Vercel environment variables.
 3. (Optional but recommended) add `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` so summaries are real AI summaries instead of excerpt-based fallbacks.
 4. Open `/admin`, enter the password, click **Run ingestion now**. Real stories appear in the feed.
-5. **Keep it fresh automatically:** add a Vercel Cron Job hitting `/api/ingest` every 15–30 minutes (Project → Settings → Cron Jobs). On the Hobby plan, use an external scheduler like cron-job.org that can send the `x-admin-password` header.
+5. **Keep it fresh automatically:** `vercel.json` already defines a daily cron hitting `/api/ingest` at 04:00 UTC (≈06:00 Norwegian time) — Vercel picks this up automatically on deploy, no dashboard clicking needed. For it to authenticate, add a `CRON_SECRET` environment variable in Vercel (any random string) — Vercel then signs its cron requests with it automatically and `/api/ingest` checks it. Want it more often than daily? Upgrade to Vercel Pro and tighten the `schedule` in `vercel.json`, or use an external scheduler like cron-job.org sending the `x-admin-password` header on the Hobby plan.
 
 That's the whole path from demo to a live, self-updating news app.
 

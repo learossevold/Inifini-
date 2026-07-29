@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Comment, Story } from '@/lib/types';
 import { useSession } from '@/lib/session';
 import { Avatar, HeartIcon, timeAgo, compact } from './ui';
@@ -76,7 +76,8 @@ function CommentRow({ story, c, depth, dark = false }: { story: Story; c: Commen
 }
 
 export default function Comments({ story, dark = false }: { story: Story; dark?: boolean }) {
-  const { commentsByStory, addComment } = useSession();
+  const { commentsByStory, addComment, ensureComments } = useSession();
+  useEffect(() => { ensureComments(story.id); }, [story.id, ensureComments]);
   const comments = useMemo(() => commentsByStory[story.id] ?? [], [commentsByStory, story.id]);
   const [text, setText] = useState('');
   const [err, setErr] = useState<string | null>(null);

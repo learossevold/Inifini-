@@ -9,7 +9,16 @@ function slugify(t: string): string {
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-async function handle(_req: NextRequest): Promise<NextResponse> {
+function authorized(req: NextRequest): boolean {
+  const expected = process.env.ADMIN_PASSWORD;
+  if (!expected) return process.env.NODE_ENV === 'development';
+  return req.headers.get('x-admin-password') === expected;
+}
+
+async function handle(req: NextRequest): Promise<NextResponse> {
+  if (!authorized(req)) {
+    return NextResponse.json({ error: 'Unauthorized. Set ADMIN_PASSWORD and send it as the x-admin-password header.' }, { status: 401 });
+  }
   const db = supabaseAdmin();
   if (!db) {
     return NextResponse.json({ error: 'Supabase not configured' }, { status: 500 });

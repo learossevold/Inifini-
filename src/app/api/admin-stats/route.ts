@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabasePublic } from '@/lib/supabase';
+import { supabasePublic, supabaseAdmin } from '@/lib/supabase';
 import { RSS_SOURCES } from '@/config/sources';
 import { MOCK_STORIES } from '@/lib/mock-data';
 
@@ -26,15 +26,18 @@ export async function GET(req: NextRequest) {
       sourceCount: RSS_SOURCES.length,
       lastIngestion: null,
       aiEngine,
+      waitlistCount: 0,
       sources: RSS_SOURCES.map((s) => ({ name: s.name, domain: s.domain, active: s.active, last_status: 'database not configured', last_fetched_at: null })),
       recentStories: MOCK_STORIES.slice(0, 10).map((s) => ({ title: s.title, source_name: s.source_name, published_at: s.published_at, is_demo: s.is_demo })),
     });
   }
 
-  const [{ count: storyCount }, { data: sources }, { data: recent }] = await Promise.all([
+  const admin = supabaseAdmin(); // waitlist has no public select policy — needs the service role key
+  const [{ count: storyCount }, { data: sources }, { data: recent }, waitlistRes] = await Promise.all([
     db.from('stories').select('*', { count: 'exact', head: true }),
     db.from('sources').select('name, domain, active, last_status, last_fetched_at').order('name'),
     db.from('stories').select('title, source_name, published_at, is_demo, fetched_at').order('fetched_at', { ascending: false }).limit(10),
+    admin ? admin.from('waitlist').select('*', { count: 'exact', head: true }) : Promise.resolve({ count: 0 }),
   ]);
 
   const lastIngestion = sources?.reduce<string | null>((acc, s: any) => {
@@ -48,6 +51,7 @@ export async function GET(req: NextRequest) {
     sourceCount: sources?.length ?? RSS_SOURCES.length,
     lastIngestion,
     aiEngine,
+    waitlistCount: (waitlistRes as any).count ?? 0,
     sources: sources ?? [],
     recentStories: recent ?? [],
   });

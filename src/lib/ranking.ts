@@ -24,12 +24,16 @@ export function scoreStory(story: Story, selected: Category | 'top' = 'top'): nu
   );
 }
 
-/** News tab: all categories. Following tab: filter to interests, but keep urgent breaking news. */
-export function rankStories(stories: Story[], interests: Category[] = [], onlyInterests = false): Story[] {
+/**
+ * News tab: all categories. Following tab: filter to followed interests
+ * and/or followed sources, but keep urgent breaking news regardless.
+ */
+export function rankStories(stories: Story[], interests: Category[] = [], onlyInterests = false, followedSources: string[] = []): Story[] {
   let pool = stories;
-  if (onlyInterests && interests.length) {
+  if (onlyInterests && (interests.length || followedSources.length)) {
     pool = stories.filter(
-      (s) => interests.includes(s.category) || (s.importance_score >= 85 && recencyScore(s.published_at) > 50)
+      (s) => interests.includes(s.category) || followedSources.includes(s.source_domain) ||
+        (s.importance_score >= 85 && recencyScore(s.published_at) > 50)
     );
   }
   const primary = interests[0] ?? 'top';

@@ -3,6 +3,17 @@
 
 create extension if not exists "pgcrypto";
 
+-- ---------- WAITLIST (pre-launch landing page signups) ----------
+create table if not exists waitlist (
+  id uuid primary key default gen_random_uuid(),
+  email text not null unique,
+  source text,
+  created_at timestamptz not null default now()
+);
+alter table waitlist enable row level security;
+drop policy if exists "public can join waitlist" on waitlist;
+create policy "public can join waitlist" on waitlist for insert with check (true);
+
 -- ---------- SOURCES ----------
 create table if not exists sources (
   id uuid primary key default gen_random_uuid(),
@@ -48,9 +59,15 @@ create table if not exists stories (
   video_url text,
   video_status text not null default 'none' check (video_status in ('none','queued','ready','failed')),
   video_duration_seconds int,
+  audio_url text,
+  audio_status text not null default 'none' check (audio_status in ('none','queued','ready','failed')),
+  audio_duration_seconds int,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+alter table stories add column if not exists audio_url text;
+alter table stories add column if not exists audio_status text not null default 'none';
+alter table stories add column if not exists audio_duration_seconds int;
 create index if not exists stories_published_at_idx on stories (published_at desc);
 create index if not exists stories_category_idx on stories (category);
 create unique index if not exists stories_slug_idx on stories (slug);
@@ -62,8 +79,10 @@ create table if not exists profiles (
   display_name text not null default '',
   avatar_url text,
   bio text,
+  onboarded boolean not null default false,
   created_at timestamptz not null default now()
 );
+alter table profiles add column if not exists onboarded boolean not null default false;
 
 -- Auto-create a profile row when a new auth user signs up.
 create or replace function handle_new_user()
@@ -87,6 +106,13 @@ create table if not exists user_interests (
   primary key (user_id, category)
 );
 
+-- ---------- FOLLOWED SOURCES ----------
+create table if not exists user_sources (
+  user_id uuid references auth.users(id) on delete cascade,
+  source_domain text not null,
+  primary key (user_id, source_domain)
+);
+
 -- ---------- FRIENDSHIPS (mutual) ----------
 create table if not exists friendships (
   id uuid primary key default gen_random_uuid(),
@@ -106,6 +132,46 @@ create table if not exists shared_stories (
   created_at timestamptz not null default now(),
   read boolean not null default false
 );
+
+-- ---------- BLOCKS ----------
+-- One-directional: blocking someone hides them from you and stops messages
+-- in BOTH directions (enforced in the messages insert policy below).
+create table if not exists blocks (
+  blocker_id uuid not null references auth.users(id) on delete cascade,
+  blocked_id uuid not null references auth.users(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (blocker_id, blocked_id),
+  constraint no_self_block check (blocker_id <> blocked_id)
+);
+create index if not exists blocks_blocked_idx on blocks (blocked_id);
+
+-- ---------- PUSH SUBSCRIPTIONS ----------
+-- One row per browser/device that opted in to notifications. `user_id` is
+-- nullable so signed-out readers can still get the morning brief.
+create table if not exists push_subscriptions (
+  endpoint text primary key,
+  user_id uuid references auth.users(id) on delete cascade,
+  p256dh text not null,
+  auth text not null,
+  created_at timestamptz not null default now()
+);
+
+-- ---------- DIRECT MESSAGES ----------
+-- 1:1 only, so a conversation is simply "every message between these two
+-- users". Storing the pair directly (rather than a participants table) keeps
+-- the RLS policies non-recursive.
+create table if not exists messages (
+  id uuid primary key default gen_random_uuid(),
+  sender_id uuid not null references auth.users(id) on delete cascade,
+  recipient_id uuid not null references auth.users(id) on delete cascade,
+  content text,
+  story_id uuid references stories(id) on delete set null,
+  created_at timestamptz not null default now(),
+  read boolean not null default false,
+  constraint message_has_body check (content is not null or story_id is not null)
+);
+create index if not exists messages_pair_idx on messages (sender_id, recipient_id, created_at desc);
+create index if not exists messages_unread_idx on messages (recipient_id, read);
 
 -- ---------- SAVES / LIKES ----------
 create table if not exists story_saves (
@@ -144,8 +210,12 @@ alter table stories enable row level security;
 alter table sources enable row level security;
 alter table profiles enable row level security;
 alter table user_interests enable row level security;
+alter table user_sources enable row level security;
 alter table friendships enable row level security;
 alter table shared_stories enable row level security;
+alter table messages enable row level security;
+alter table blocks enable row level security;
+alter table push_subscriptions enable row level security;
 alter table story_saves enable row level security;
 alter table story_likes enable row level security;
 alter table comments enable row level security;
@@ -163,15 +233,46 @@ create policy "update own profile" on profiles for update using (auth.uid() = id
 -- Interests: owner only
 create policy "manage own interests" on user_interests for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
+-- Followed sources: owner only
+create policy "manage own sources" on user_sources for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
 -- Friendships: visible to the two users involved; either can create/update
 create policy "see own friendships" on friendships for select using (auth.uid() = user_id_1 or auth.uid() = user_id_2);
 create policy "create friendship" on friendships for insert with check (auth.uid() = user_id_1);
 create policy "update own friendship" on friendships for update using (auth.uid() = user_id_1 or auth.uid() = user_id_2);
+drop policy if exists "delete own friendship" on friendships;
+create policy "delete own friendship" on friendships for delete using (auth.uid() = user_id_1 or auth.uid() = user_id_2);
 
 -- Shared stories: sender or recipient
 create policy "see own shares" on shared_stories for select using (auth.uid() = from_user_id or auth.uid() = to_user_id);
 create policy "send share" on shared_stories for insert with check (auth.uid() = from_user_id);
 create policy "mark share read" on shared_stories for update using (auth.uid() = to_user_id);
+
+-- Push subscriptions: no policies on purpose. Reads and writes go through
+-- /api/push/* with the service role key, so the anon key can never enumerate
+-- or delete other people's devices.
+
+-- Blocks: you manage your own list, and can see who has blocked you only
+-- insofar as the policies below act on it.
+drop policy if exists "manage own blocks" on blocks;
+create policy "manage own blocks" on blocks for all using (auth.uid() = blocker_id) with check (auth.uid() = blocker_id);
+
+-- Direct messages: only the two people in the conversation. Sending is
+-- refused in BOTH directions once either side has blocked the other —
+-- enforced here so the rule holds no matter what the client does.
+drop policy if exists "read own messages" on messages;
+create policy "read own messages" on messages for select using (auth.uid() = sender_id or auth.uid() = recipient_id);
+drop policy if exists "send message" on messages;
+create policy "send message" on messages for insert with check (
+  auth.uid() = sender_id
+  and not exists (
+    select 1 from blocks b
+    where (b.blocker_id = recipient_id and b.blocked_id = auth.uid())
+       or (b.blocker_id = auth.uid() and b.blocked_id = recipient_id)
+  )
+);
+drop policy if exists "mark message read" on messages;
+create policy "mark message read" on messages for update using (auth.uid() = recipient_id);
 
 -- Saves / likes: owner only
 create policy "manage own saves" on story_saves for all using (auth.uid() = user_id) with check (auth.uid() = user_id);

@@ -12,7 +12,7 @@ import Logo from './Logo';
 import { categoryLabel } from './ui';
 
 export default function Feed() {
-  const { interests } = useSession();
+  const { interests, followedSources } = useSession();
   const [tab, setTab] = useState<FeedTab>('watch');
   const [stories, setStories] = useState<Story[]>([]);
   const [page, setPage] = useState(0);
@@ -31,7 +31,10 @@ export default function Feed() {
     setLoading(true); setError(null);
     try {
       const params = new URLSearchParams({ page: String(p), tab: t });
-      if (t === 'following') params.set('interests', interests.join(','));
+      if (t === 'following') {
+        params.set('interests', interests.join(','));
+        params.set('sources', Array.from(followedSources).join(','));
+      }
       const res = await fetch(`/api/stories?${params}`);
       if (!res.ok) throw new Error('Could not load stories');
       const data: FeedResponse = await res.json();
@@ -47,17 +50,17 @@ export default function Feed() {
     } finally {
       setLoading(false); loadingRef.current = false;
     }
-  }, [interests]);
+  }, [interests, followedSources]);
 
-  const followingEmpty = tab === 'following' && interests.length === 0;
+  const followingEmpty = tab === 'following' && interests.length === 0 && followedSources.size === 0;
 
   useEffect(() => {
     setStories([]); setExpandedId(null);
     window.scrollTo({ top: 0 });
-    // Following with no interests shows a prompt instead of any (mock) stories.
-    if (tab === 'following' && interests.length === 0) { setLoading(false); return; }
+    // Following with nothing chosen shows a prompt instead of any (mock) stories.
+    if (followingEmpty) { setLoading(false); return; }
     loadPage(0, tab, true);
-  }, [tab, loadPage, interests.length]);
+  }, [tab, loadPage, followingEmpty]);
 
   // Infinite scroll for News/Following (Watch handles its own)
   useEffect(() => {
@@ -96,7 +99,9 @@ export default function Feed() {
           <nav className="flex items-center gap-6">
             <TabBtn id="watch" label="Watch" />
             <TabBtn id="news" label="News" />
-            <TabBtn id="following" label="Following" />
+            {/* Internally still the "following" feed — nobody follows *people*,
+                so it reads as Explore: your interests + the outlets you picked. */}
+            <TabBtn id="following" label="Explore" />
           </nav>
         </div>
       </header>
@@ -115,15 +120,15 @@ export default function Feed() {
         <main className="px-4">
           {followingEmpty ? (
             <div className="mt-20 text-center">
-              <p className="font-serif text-2xl font-semibold">Follow topics to personalize your feed.</p>
-              <p className="mx-auto mt-3 max-w-xs text-sm text-muted">Choose the subjects you care about and stories about them will gather here.</p>
-              <Link href="/profile" className="mt-6 inline-block rounded-md bg-ink px-5 py-2.5 text-sm font-medium text-paper">Choose topics</Link>
+              <p className="font-serif text-2xl font-semibold">Pick what you&rsquo;re into.</p>
+              <p className="mx-auto mt-3 max-w-xs text-sm text-muted">Choose the subjects and news outlets you care about — everything they publish gathers here.</p>
+              <Link href="/profile" className="mt-6 inline-block rounded-md bg-ink px-5 py-2.5 text-sm font-medium text-paper">Choose topics &amp; sources</Link>
             </div>
           ) : (
           <>
-          {tab === 'following' && interests.length > 0 && (
+          {tab === 'following' && (interests.length > 0 || followedSources.size > 0) && (
             <p className="pt-3 text-[12px] text-muted">
-              Following: {interests.map(categoryLabel).join(' · ')} · <Link href="/profile" className="underline">Edit</Link>
+              Following: {[...interests.map(categoryLabel), ...Array.from(followedSources)].join(' · ')} · <Link href="/profile" className="underline">Edit</Link>
             </p>
           )}
 
@@ -138,8 +143,8 @@ export default function Feed() {
           {!loading && !error && stories.length === 0 && (
             <div className="mt-16 text-center">
               <p className="font-serif text-xl font-semibold">Nothing here yet.</p>
-              <p className="mt-2 text-sm text-muted">{tab === 'following' ? 'Pick more interests to fill this feed.' : 'No stories right now.'}</p>
-              {tab === 'following' && <Link href="/profile" className="mt-5 inline-block rounded-md bg-ink px-5 py-2.5 text-sm font-medium text-paper">Edit interests</Link>}
+              <p className="mt-2 text-sm text-muted">{tab === 'following' ? 'Pick more topics or sources to fill this feed.' : 'No stories right now.'}</p>
+              {tab === 'following' && <Link href="/profile" className="mt-5 inline-block rounded-md bg-ink px-5 py-2.5 text-sm font-medium text-paper">Edit topics &amp; sources</Link>}
             </div>
           )}
 
