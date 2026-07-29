@@ -27,20 +27,24 @@ const config: Config = {
         // Four Ken Burns moves, chosen per story so consecutive cards don't
         // drift identically. They alternate forever rather than settling, so a
         // card left on screen keeps moving like footage instead of freezing.
-        kenburns1: 'kenburns1 24s ease-in-out infinite alternate',
-        kenburns2: 'kenburns2 26s ease-in-out infinite alternate',
-        kenburns3: 'kenburns3 28s ease-in-out infinite alternate',
-        kenburns4: 'kenburns4 22s ease-in-out infinite alternate',
+        // Long and linear on purpose: a drift you can catch happening is a
+        // distraction, and ease-in-out makes it visibly surge in the middle.
+        kenburns1: 'kenburns1 44s linear infinite alternate',
+        kenburns2: 'kenburns2 48s linear infinite alternate',
+        kenburns3: 'kenburns3 52s linear infinite alternate',
+        kenburns4: 'kenburns4 40s linear infinite alternate',
       },
       keyframes: {
         pulseDot: { '0%,100%': { opacity: '1' }, '50%': { opacity: '0.3' } },
         fadeUp: { from: { opacity: '0', transform: 'translateY(8px)' }, to: { opacity: '1', transform: 'translateY(0)' } },
         // Held well above 1 throughout, so the subject fills the frame like a
-        // shot rather than sitting inside the whole photo.
-        kenburns1: { from: { transform: 'scale(1.20) translate(0, 0)' }, to: { transform: 'scale(1.38) translate(-3%, -3%)' } },
-        kenburns2: { from: { transform: 'scale(1.38) translate(2%, 2%)' }, to: { transform: 'scale(1.20) translate(0, 0)' } },
-        kenburns3: { from: { transform: 'scale(1.24) translate(-3%, 1%)' }, to: { transform: 'scale(1.40) translate(3%, -2%)' } },
-        kenburns4: { from: { transform: 'scale(1.22) translate(0, 3%)' }, to: { transform: 'scale(1.42) translate(0, -3%)' } },
+        // shot rather than sitting inside the whole photo. The travel is kept
+        // narrow (about a tenth of the frame over three quarters of a minute)
+        // so the image breathes rather than zooms.
+        kenburns1: { from: { transform: 'scale(1.16) translate(0, 0)' }, to: { transform: 'scale(1.26) translate(-2%, -2%)' } },
+        kenburns2: { from: { transform: 'scale(1.26) translate(1.5%, 1.5%)' }, to: { transform: 'scale(1.16) translate(0, 0)' } },
+        kenburns3: { from: { transform: 'scale(1.18) translate(-2%, 1%)' }, to: { transform: 'scale(1.28) translate(2%, -1.5%)' } },
+        kenburns4: { from: { transform: 'scale(1.17) translate(0, 2%)' }, to: { transform: 'scale(1.27) translate(0, -2%)' } },
       },
     },
   },

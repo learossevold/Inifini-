@@ -201,7 +201,13 @@ function WatchCard({
           <Image src={story.image_url!} alt="" fill sizes="100vw" aria-hidden
             className="scale-125 object-cover blur-2xl brightness-50" unoptimized />
           <Image src={story.image_url!} alt="" fill sizes="100vw"
-            className={`object-cover ${active ? kenBurns : ''}`}
+            /* The animation class is applied always, never toggled. Adding it
+               used to snap the image straight from scale(1) to the keyframe's
+               starting scale, and removing it snapped back, so every card
+               visibly popped as it scrolled past. Only the play state changes
+               now: pausing freezes the drift where it stands, and resuming
+               carries on from the same frame, so nothing ever jumps. */
+            className={`object-cover ${kenBurns} ${active ? '' : 'anim-paused'}`}
             onError={() => setImgFailed(true)} unoptimized />
         </div>
       ) : (
@@ -339,24 +345,22 @@ export default function WatchFeed({
   const { recordView } = useSession();
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const scrollItemToTop = useCallback((id: string, behavior: ScrollBehavior = 'auto') => {
-    requestAnimationFrame(() => {
-      document.getElementById(`watch-item-${id}`)?.scrollIntoView({ behavior, block: 'start' });
-    });
-  }, []);
-
+  // An article used to open inline, inside the snapping feed. Because it was
+  // several screens tall it became a snap point of its own, so scrolling back
+  // up towards the previous card stopped dead at the article's top instead of
+  // carrying on, and closing had to be papered over with a scripted scroll.
+  //
+  // It now opens in its own layer above the feed, with its own scrollbar. The
+  // feed underneath never moves, so there is nothing to restore on close and
+  // no second snap point to fight: reading and scrolling stopped competing.
   const open = useCallback((s: Story) => {
     setOpenId(s.id);
     recordView(s.id);
-    // Instant on open: you tapped for the article, so put it there at once.
-    scrollItemToTop(s.id);
-  }, [scrollItemToTop, recordView]);
+  }, [recordView]);
 
-  const close = useCallback((s: Story) => {
-    setOpenId((cur) => (cur === s.id ? null : cur));
-    // Gliding back to the card reads as returning, rather than being thrown.
-    scrollItemToTop(s.id, 'smooth');
-  }, [scrollItemToTop]);
+  const close = useCallback(() => setOpenId(null), []);
+
+  const openStory = openId ? stories.find((s) => s.id === openId) ?? null : null;
 
   useEffect(() => {
     const el = containerRef.current;
@@ -390,22 +394,27 @@ export default function WatchFeed({
         {stories.map((s, i) => (
           /* h-full on the wrapper too: the card measures against this box, so
              without it the wrapper collapses and the card has no height to
-             resolve against. An open article overrides it with min-h-full. */
-          <div key={s.id} id={`watch-item-${s.id}`} data-watch-card data-idx={i} className={openId === s.id ? 'relative' : 'relative h-full'}>
-            {openId === s.id ? (
-              <WatchArticle story={s} onClose={() => close(s)} onShare={() => onShare(s)} />
-            ) : (
-              <>
-                <WatchCard story={s} active={i === activeIdx} onOpen={() => open(s)} muted={muted} onToggleMute={() => setMuted((m) => !m)} />
-                {/* Right-side vertical engagement rail */}
-                <div className="absolute bottom-32 right-3 z-10">
-                  <EngagementBar story={s} vertical dark onComment={() => setCommentStory(s)} onShare={() => onShare(s)} />
-                </div>
-              </>
-            )}
+             resolve against. */
+          <div key={s.id} id={`watch-item-${s.id}`} data-watch-card data-idx={i} className="relative h-full">
+            {/* Drift and audio stop while an article is being read, so nothing
+                moves or plays behind the layer on top. */}
+            <WatchCard story={s} active={i === activeIdx && !openId} onOpen={() => open(s)} muted={muted} onToggleMute={() => setMuted((m) => !m)} />
+            {/* Right-side vertical engagement rail */}
+            <div className="absolute bottom-32 right-3 z-10">
+              <EngagementBar story={s} vertical dark onComment={() => setCommentStory(s)} onShare={() => onShare(s)} />
+            </div>
           </div>
         ))}
       </div>
+
+      {/* overscroll-contain keeps a flick at either end of the article from
+          scrolling the feed hidden behind it. */}
+      {openStory && (
+        <div className="fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-night animate-fadeUp" role="dialog" aria-modal="true" aria-label={openStory.title}>
+          <WatchArticle story={openStory} onClose={close} onShare={() => onShare(openStory)} />
+        </div>
+      )}
+
       {commentStory && <CommentSheet story={commentStory} onClose={() => setCommentStory(null)} />}
     </>
   );
