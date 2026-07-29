@@ -84,7 +84,7 @@ export default function ProfilePage() {
         </div>
         {!editingSources ? (
           <div className="mt-3 flex flex-wrap gap-2">
-            {followedSources.size === 0 && <p className="text-[14px] text-muted">Not following any specific sources — you&rsquo;ll still see everything by topic.</p>}
+            {followedSources.size === 0 && <p className="text-[14px] text-muted">Not following any specific sources. You&rsquo;ll still see everything by topic.</p>}
             {Array.from(new Map(RSS_SOURCES.map((s) => [s.domain, s])).values())
               .filter((s) => followedSources.has(s.domain))
               .map((s) => <span key={s.domain} className="rounded-full bg-accentSoft px-3 py-1.5 text-[13px] font-medium text-accent">{s.name}</span>)}
@@ -124,7 +124,7 @@ export default function ProfilePage() {
           <button onClick={() => signOut()} className="block w-full py-2.5 text-left text-accent">Sign out</button>
         )}
         {!configured && (
-          <p className="mt-4 text-[12px] text-muted">Demo account. With Supabase connected, sign-in uses a magic link sent to your email — no password to remember.</p>
+          <p className="mt-4 text-[12px] text-muted">Demo account. With Supabase connected, sign-in uses a magic link sent to your email, so there is no password to remember.</p>
         )}
       </section>
 

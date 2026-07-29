@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
 
   // Resubmitting the same email is treated as a success — no spam, no leaking who already joined.
   if (error && !error.message.toLowerCase().includes('duplicate')) {
-    return NextResponse.json({ error: 'Could not join the waitlist right now — try again shortly.' }, { status: 500, headers: CORS_HEADERS });
+    return NextResponse.json({ error: 'Could not join the waitlist right now. Try again shortly.' }, { status: 500, headers: CORS_HEADERS });
   }
 
   return NextResponse.json({ ok: true }, { headers: CORS_HEADERS });

@@ -69,7 +69,7 @@ export async function enablePush(): Promise<{ error?: string }> {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(subscription.toJSON()),
     });
-    if (!res.ok) return { error: 'Could not save your notification settings — try again.' };
+    if (!res.ok) return { error: 'Could not save your notification settings. Try again.' };
     return {};
   } catch {
     return { error: 'Could not turn on notifications on this device.' };

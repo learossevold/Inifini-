@@ -101,7 +101,7 @@ export default function ShareSheet({ story, onClose }: { story: Story; onClose: 
     { id: 'save', label: saved ? 'Saved' : 'Save', onClick: () => { toggleSave(story.id); flash(saved ? 'Removed from saved' : 'Saved to your profile'); } },
     { id: 'original', label: 'Original', onClick: () => openExternal(story.original_url) },
     { id: 'notinterested', label: 'Not interested', onClick: () => flash('We’ll show fewer stories like this') },
-    { id: 'report', label: 'Report', onClick: () => flash('Thanks — our team will take a look') },
+    { id: 'report', label: 'Report', onClick: () => flash('Thanks, our team will take a look') },
   ];
 
   return (

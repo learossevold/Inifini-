@@ -43,7 +43,7 @@ export default function SignInPrompt() {
         ) : (
           <>
             <h2 className="font-serif text-[22px] font-bold leading-snug">{signInPrompt}</h2>
-            <p className="mt-2 text-[14px] text-muted">No password — we&rsquo;ll email you a magic link. Keep reading either way.</p>
+            <p className="mt-2 text-[14px] text-muted">No password needed. We&rsquo;ll email you a magic link, and you can keep reading either way.</p>
 
             <input
               autoFocus

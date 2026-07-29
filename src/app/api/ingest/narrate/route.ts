@@ -25,7 +25,7 @@ async function handle(req: NextRequest) {
   if (!db) return NextResponse.json({ error: 'Supabase not configured' }, { status: 500 });
 
   if (!process.env.OPENAI_API_KEY_TTS) {
-    return NextResponse.json({ narrated: 0, message: 'OPENAI_API_KEY_TTS not set — Watch stays on silent caption cards.' });
+    return NextResponse.json({ narrated: 0, message: 'OPENAI_API_KEY_TTS not set, so Watch stays on silent caption cards.' });
   }
 
   // Storage bucket for the generated audio; created once, then reused.

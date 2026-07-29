@@ -21,7 +21,7 @@ function categoryLabel(id: string): string {
 
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
   const story = await getStoryBySlug(params.slug);
-  if (!story) return { title: 'Story not found — Inifini' };
+  if (!story) return { title: 'Story not found · Inifini' };
 
   const description = story.ai_short_summary || story.original_excerpt;
   return {
@@ -106,7 +106,7 @@ export default async function PublicStoryPage({ params }: { params: { slug: stri
         <span aria-hidden>→</span>
       </a>
       <p className="mt-2 font-sans text-[11px] text-muted">
-        AI-assisted summary based on the publisher&rsquo;s public feed. May contain errors — the original reporting is the source of record.
+        AI-assisted summary. {story.source_name} is the source of record.
       </p>
 
       {/* The way in: this page exists to turn a shared link into a reader. */}
