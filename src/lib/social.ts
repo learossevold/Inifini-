@@ -82,7 +82,7 @@ export async function completeOnboardingRemote(
   db: SupabaseClient, userId: string, username: string, categories: Category[]
 ): Promise<{ error?: string }> {
   const { error } = await db.from('profiles').update({ username, display_name: username, onboarded: true }).eq('id', userId);
-  if (error) return { error: error.message.includes('duplicate') ? 'That username is taken — try another.' : error.message };
+  if (error) return { error: error.message.includes('duplicate') ? 'That username is taken. Try another one.' : error.message };
   await saveInterests(db, userId, categories);
   return {};
 }

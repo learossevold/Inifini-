@@ -68,7 +68,7 @@ export default function ArticleView({
         <span>Read the original at <span className="font-semibold">{story.source_name}</span></span>
         <span aria-hidden>→</span>
       </a>
-      <p className="mt-2 text-[11px] font-sans text-muted">AI-assisted summary based on the public feed excerpt. May contain errors — the original reporting is the source of record.</p>
+      <p className="mt-2 text-[11px] font-sans text-muted">AI-assisted summary. {story.source_name} is the source of record.</p>
 
       <Comments story={story} />
 

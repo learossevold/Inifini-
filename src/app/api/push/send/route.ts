@@ -30,7 +30,7 @@ async function handle(req: NextRequest) {
   const privateKey = process.env.VAPID_PRIVATE_KEY;
   const contact = process.env.VAPID_CONTACT_EMAIL || 'admin@inifini.app';
   if (!publicKey || !privateKey) {
-    return NextResponse.json({ sent: 0, message: 'VAPID keys not set — notifications are off.' });
+    return NextResponse.json({ sent: 0, message: 'VAPID keys not set, so notifications are off.' });
   }
   webpush.setVapidDetails(`mailto:${contact}`, publicKey, privateKey);
 

@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 export const metadata: Metadata = {
-  title: 'Privacy Policy — Inifini',
+  title: 'Privacy Policy · Inifini',
   description: 'What Inifini collects, why, and the control you have over it.',
 };
 
@@ -43,7 +43,7 @@ export default function PrivacyPage() {
       </Section>
 
       <Section title="What we store if you create an account">
-        <p>Sign-in uses a link emailed to you — there is no password to store. Once you have an account we keep:</p>
+        <p>Sign-in uses a link emailed to you, so there is no password to store. Once you have an account we keep:</p>
         <ul className="ml-4 list-disc space-y-1.5">
           <li>Your email address, used only to sign you in.</li>
           <li>Your username and display name, which other users can see.</li>

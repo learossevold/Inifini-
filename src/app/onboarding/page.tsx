@@ -41,7 +41,7 @@ export default function Onboarding() {
           {err && <p className="mt-2 text-[13px] text-accent">{err}</p>}
           <button onClick={() => setStep(1)} disabled={username.length < 2}
             className="mt-6 w-full rounded-lg bg-ink py-3.5 font-semibold text-paper disabled:opacity-40">Continue</button>
-          {!configured && <p className="mt-4 text-center text-[12px] text-muted">Demo mode — no real email needed. With Supabase connected, this becomes a magic-link login.</p>}
+          {!configured && <p className="mt-4 text-center text-[12px] text-muted">Demo mode, so no real email is needed. With Supabase connected, this becomes a magic-link login.</p>}
         </div>
       ) : (
         <div className="mt-12 animate-fadeUp">

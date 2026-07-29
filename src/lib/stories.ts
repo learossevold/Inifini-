@@ -2,6 +2,7 @@ import { supabasePublic } from './supabase';
 import { MOCK_STORIES, mockPage } from './mock-data';
 import { rankStories, pickBreaking } from './ranking';
 import { upgradeImageUrl } from './images';
+import { stripEmDashes } from './text';
 import { Category, FeedResponse, Story } from './types';
 
 const PAGE_SIZE = 9;
@@ -17,13 +18,22 @@ const HYDRATE_DEFAULTS = {
   audio_duration_seconds: null,
 };
 
-/** Shape a raw row into a Story, asking the publisher's CDN for a large image. */
+/**
+ * Shape a raw row into a Story: ask the publisher's CDN for a large image, and
+ * clean em dashes out of text written before the house style ruled them out.
+ */
 function hydrate(row: any): Story {
   return {
     ...HYDRATE_DEFAULTS,
     ...row,
     image_url: row.image_url ? upgradeImageUrl(row.image_url) : row.image_url,
-    ai_key_points: Array.isArray(row.ai_key_points) ? row.ai_key_points : [],
+    title: stripEmDashes(row.title ?? ''),
+    ai_short_summary: stripEmDashes(row.ai_short_summary ?? ''),
+    ai_medium_summary: stripEmDashes(row.ai_medium_summary ?? ''),
+    ai_why_it_matters: stripEmDashes(row.ai_why_it_matters ?? ''),
+    ai_background: stripEmDashes(row.ai_background ?? ''),
+    ai_what_next: stripEmDashes(row.ai_what_next ?? ''),
+    ai_key_points: Array.isArray(row.ai_key_points) ? row.ai_key_points.map((p: unknown) => stripEmDashes(String(p))) : [],
   } as Story;
 }
 

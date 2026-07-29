@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 export const metadata: Metadata = {
-  title: 'Terms of Use — Inifini',
+  title: 'Terms of Use · Inifini',
   description: 'The rules for using Inifini, and what we promise in return.',
 };
 

@@ -7,6 +7,8 @@
  * no long copying, acknowledge limited source data, preserve attribution.
  */
 
+import { stripEmDashes } from './text';
+
 export interface SummaryBundle {
   ai_title?: string; // English translation of the title (only set for non-English sources)
   ai_short_summary: string;
@@ -36,6 +38,7 @@ Strict rules:
 - Do not pretend to know more than the title/excerpt provides.
 - If source data is thin, say so plainly (e.g. "according to the source feed", "details are limited").
 - Never copy long passages. Rephrase in your own words.
+- Never use em dashes or en dashes. Use a comma, a full stop or a colon instead. Ordinary hyphens in compound words are fine.
 - Always neutral, careful, non-sensational. No clickbait.
 - Forward-looking sections must be cautious and clearly framed as outlook, not prediction.
 
@@ -65,14 +68,15 @@ function parseBundle(text: string): SummaryBundle | null {
     const clean = text.replace(/```json|```/g, '').trim();
     const obj = JSON.parse(clean);
     if (!obj.ai_short_summary || !Array.isArray(obj.ai_key_points)) return null;
+    // The prompt forbids em dashes, but models slip; strip them either way.
     return {
-      ...(obj.ai_title ? { ai_title: String(obj.ai_title) } : {}),
-      ai_short_summary: String(obj.ai_short_summary),
-      ai_medium_summary: String(obj.ai_medium_summary ?? ''),
-      ai_why_it_matters: String(obj.ai_why_it_matters ?? ''),
-      ai_key_points: obj.ai_key_points.slice(0, 5).map(String),
-      ai_background: String(obj.ai_background ?? ''),
-      ai_what_next: String(obj.ai_what_next ?? ''),
+      ...(obj.ai_title ? { ai_title: stripEmDashes(String(obj.ai_title)) } : {}),
+      ai_short_summary: stripEmDashes(String(obj.ai_short_summary)),
+      ai_medium_summary: stripEmDashes(String(obj.ai_medium_summary ?? '')),
+      ai_why_it_matters: stripEmDashes(String(obj.ai_why_it_matters ?? '')),
+      ai_key_points: obj.ai_key_points.slice(0, 5).map((p: unknown) => stripEmDashes(String(p))),
+      ai_background: stripEmDashes(String(obj.ai_background ?? '')),
+      ai_what_next: stripEmDashes(String(obj.ai_what_next ?? '')),
     };
   } catch {
     return null;

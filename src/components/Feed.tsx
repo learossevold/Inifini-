@@ -121,7 +121,7 @@ export default function Feed() {
           {followingEmpty ? (
             <div className="mt-20 text-center">
               <p className="font-serif text-2xl font-semibold">Pick what you&rsquo;re into.</p>
-              <p className="mx-auto mt-3 max-w-xs text-sm text-muted">Choose the subjects and news outlets you care about — everything they publish gathers here.</p>
+              <p className="mx-auto mt-3 max-w-xs text-sm text-muted">Choose the subjects and news outlets you care about. Everything they publish gathers here.</p>
               <Link href="/profile" className="mt-6 inline-block rounded-md bg-ink px-5 py-2.5 text-sm font-medium text-paper">Choose topics &amp; sources</Link>
             </div>
           ) : (
