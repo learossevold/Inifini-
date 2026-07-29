@@ -189,7 +189,7 @@ function WatchCard({
       onClick={onOpen}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); } }}
       aria-label={`Open article: ${story.title}`}
-      className="snap-screen relative h-[calc(100vh-7.5rem)] w-full cursor-pointer overflow-hidden bg-night text-white"
+      className="snap-screen relative h-full w-full cursor-pointer overflow-hidden bg-night text-white"
     >
       {/* Background */}
       {hasVideo ? (
@@ -271,7 +271,7 @@ function WatchArticle({
   const showImage = story.image_url && !imgFailed;
 
   return (
-    <article className="snap-soft min-h-[calc(100vh-7.5rem)] w-full bg-night text-white">
+    <article className="snap-soft min-h-full w-full bg-night text-white">
       {/* Hero image (landscape, top) — tap to close back to the card */}
       <button
         type="button"
@@ -385,10 +385,13 @@ export default function WatchFeed({
           read through freely rather than pulling the scroll back to its top. */}
       <div
         ref={containerRef}
-        className="snap-y-screen h-[calc(100vh-7.5rem)] overflow-y-auto no-scrollbar"
+        className="snap-y-screen h-full overflow-y-auto no-scrollbar"
       >
         {stories.map((s, i) => (
-          <div key={s.id} id={`watch-item-${s.id}`} data-watch-card data-idx={i} className="relative">
+          /* h-full on the wrapper too: the card measures against this box, so
+             without it the wrapper collapses and the card has no height to
+             resolve against. An open article overrides it with min-h-full. */
+          <div key={s.id} id={`watch-item-${s.id}`} data-watch-card data-idx={i} className={openId === s.id ? 'relative' : 'relative h-full'}>
             {openId === s.id ? (
               <WatchArticle story={s} onClose={() => close(s)} onShare={() => onShare(s)} />
             ) : (
