@@ -62,6 +62,15 @@ export default function Feed() {
     loadPage(0, tab, true);
   }, [tab, loadPage, followingEmpty]);
 
+  // Watch is a full-screen feed: switch the document scroller off while it is
+  // open so a flick can only move the feed. Two scrollers is what made a swipe
+  // land halfway — the page took part of it before the feed took the rest.
+  useEffect(() => {
+    if (tab !== 'watch') return;
+    document.documentElement.classList.add('watch-lock');
+    return () => document.documentElement.classList.remove('watch-lock');
+  }, [tab]);
+
   // Infinite scroll for News/Following (Watch handles its own)
   useEffect(() => {
     if (tab === 'watch') return;
@@ -94,11 +103,14 @@ export default function Feed() {
   );
 
   return (
-    <div>
+    /* On Watch the shell is a fixed-height flex column that clips its own
+       overflow, so the feed inside it is the only thing on screen that
+       scrolls. The other tabs scroll the page as normal. */
+    <div className={tab === 'watch' ? 'watch-shell flex flex-col overflow-hidden' : undefined}>
       {/* Brand mark left, the three feeds grouped in the middle. The spacer
           matches the mark's width so the group sits centred on screen rather
           than nudged right by it. */}
-      <header className="sticky top-0 z-30 border-b border-rule bg-paper/95 backdrop-blur-sm">
+      <header className="sticky top-0 z-30 shrink-0 border-b border-rule bg-paper/95 backdrop-blur-sm">
         <div className="flex items-center px-4">
           <Link href="/" aria-label="Inifini home" className="shrink-0">
             <Logo size={30} />
@@ -118,11 +130,15 @@ export default function Feed() {
 
       {/* WATCH TAB */}
       {tab === 'watch' ? (
-        loading && stories.length === 0 ? (
-          <div className="flex h-[calc(100vh-7.5rem)] items-center justify-center text-muted">Loading…</div>
-        ) : (
-          <WatchFeed stories={stories} onShare={(s) => setShareStory(s)} onNeedMore={() => loadPage(page + 1, 'watch')} />
-        )
+        /* min-h-0 lets this shrink to the space the header leaves, instead of
+           being floored at its content height and pushing the feed off-screen. */
+        <div className="min-h-0 flex-1">
+          {loading && stories.length === 0 ? (
+            <div className="flex h-full items-center justify-center text-muted">Loading…</div>
+          ) : (
+            <WatchFeed stories={stories} onShare={(s) => setShareStory(s)} onNeedMore={() => loadPage(page + 1, 'watch')} />
+          )}
+        </div>
       ) : (
         /* NEWS / FOLLOWING TABS */
         <main className="px-4">

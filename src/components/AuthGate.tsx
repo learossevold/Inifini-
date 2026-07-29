@@ -31,7 +31,10 @@ export default function AuthGate({ children }: { children: ReactNode }) {
 
   return (
     <>
-      <div className="mx-auto min-h-screen max-w-md pb-16">{children}</div>
+      {/* app-shell carries the full-height rule in dvh, so on iOS it tracks the
+          viewport that is actually visible rather than the taller one Safari
+          reports before its address bar collapses. */}
+      <div className="app-shell mx-auto max-w-md pb-16">{children}</div>
       <BottomNav />
       <SignInPrompt />
     </>

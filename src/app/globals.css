@@ -8,7 +8,45 @@ html { scroll-behavior: smooth; }
 .rule-t { border-top: 1px solid theme('colors.rule'); }
 ::selection { background: theme('colors.accentSoft'); }
 
-/* Watch tab: each card snaps to the full viewport height. */
+/* Watch tab shell. Two things made a single flick snap only halfway:
+
+   1. The page itself could scroll as well as the feed. The header is sticky, so
+      it sits in the normal flow; a viewport-sized feed underneath it pushed the
+      document past the screen. A flick then moved the document first and the
+      feed second, which reads as stopping half a card in.
+   2. On iOS, 100vh is the viewport WITHOUT Safari's collapsing address bar, so
+      anything sized in vh is taller than what you can actually see.
+
+   The shell fixes both: it is exactly the visible height minus the fixed bottom
+   nav, it clips its own overflow, and it lays the header and feed out with flex
+   so the card height is measured rather than guessed. The vh line stays first
+   as a fallback for browsers without dvh. */
+.watch-shell {
+  height: calc(100vh - 3.875rem);
+  height: calc(100dvh - 3.875rem);
+}
+
+/* The app wrapper pads its bottom so the fixed nav never covers the last of a
+   scrolling page. Watch doesn't want that: its shell already reserves the nav's
+   height, so the padding double-counts it and pushes the document a few pixels
+   past the viewport — which is all iOS needs to rubber-band the page as a
+   second scroller. While Watch is open the wrapper drops its padding and the
+   document scroller is switched off, leaving the feed as the only thing that
+   moves. Feed toggles .watch-lock. */
+.app-shell {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+html.watch-lock,
+html.watch-lock body {
+  overflow: hidden;
+  overscroll-behavior-y: none;
+}
+html.watch-lock .app-shell {
+  min-height: 0;
+  padding-bottom: 0;
+}
+
 .snap-y-screen { scroll-snap-type: y mandatory; }
 .snap-screen { scroll-snap-align: start; scroll-snap-stop: always; }
 
