@@ -402,25 +402,27 @@ export default function WatchFeed({
 
   const openStory = openId ? stories.find((s) => s.id === openId) ?? null : null;
 
-  const handleArticleTouchStart = useCallback((e: React.TouchEvent) => {
-    touchStartY.current = e.touches[0].clientY;
-  }, []);
+  // A swipe that continues past the article's own scroll boundary moves to
+  // the neighbouring card. This used to fire only on touchend, after the
+  // finger had already lifted — which left a small but real gap between the
+  // gesture finishing and the screen reacting, unlike a normal flick, where
+  // the browser is already moving the content continuously while the finger
+  // is still on the glass. Checking on every touchmove instead, with a
+  // smaller threshold, starts the transition while the drag is still in
+  // progress, closing that gap. triggeredRef stops it firing a second time
+  // from the same gesture once it already has.
+  const triggeredRef = useRef(false);
 
-  const handleArticleTouchEnd = useCallback((e: React.TouchEvent) => {
-    const startY = touchStartY.current;
-    touchStartY.current = null;
-    if (startY === null || !openId) return;
-    const el = e.currentTarget;
-    const deltaY = startY - e.changedTouches[0].clientY; // positive: swiped up (content moving down)
-    const SWIPE_THRESHOLD = 60;
-    if (Math.abs(deltaY) < SWIPE_THRESHOLD) return;
+  const goToNeighbourIfAtBoundary = useCallback((el: HTMLElement, deltaY: number, threshold: number) => {
+    if (triggeredRef.current || !openId || Math.abs(deltaY) < threshold) return;
     const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 2;
     const atTop = el.scrollTop <= 0;
-    const idx = stories.findIndex((s) => s.id === openId);
     const direction = deltaY > 0 && atBottom ? 1 : deltaY < 0 && atTop ? -1 : 0;
     if (direction === 0) return; // not at the boundary in the swiped direction: let it scroll normally
+    const idx = stories.findIndex((s) => s.id === openId);
     const target = stories[idx + direction];
     if (!target) return; // first/last card, nowhere further that way
+    triggeredRef.current = true;
     document.getElementById(`watch-item-${target.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     // Closed directly here rather than left to the auto-close observer
     // below: a smooth, CSS-driven scrollIntoView reaches the right final
@@ -432,6 +434,28 @@ export default function WatchFeed({
     // on the outer container, which isn't driven by scrollIntoView at all.
     setOpenId(null);
   }, [openId, stories]);
+
+  const handleArticleTouchStart = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    touchStartY.current = e.touches[0].clientY;
+    triggeredRef.current = false;
+  }, []);
+
+  const handleArticleTouchMove = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    const startY = touchStartY.current;
+    if (startY === null) return;
+    const LIVE_THRESHOLD = 24; // small: this fires while the drag is still moving, not after it ends
+    goToNeighbourIfAtBoundary(e.currentTarget, startY - e.touches[0].clientY, LIVE_THRESHOLD);
+  }, [goToNeighbourIfAtBoundary]);
+
+  const handleArticleTouchEnd = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    const startY = touchStartY.current;
+    touchStartY.current = null;
+    if (startY === null) return;
+    // Fallback for a slow drag that never crossed the live threshold above
+    // but still travelled far enough in total by the time the finger lifts.
+    const END_THRESHOLD = 60;
+    goToNeighbourIfAtBoundary(e.currentTarget, startY - e.changedTouches[0].clientY, END_THRESHOLD);
+  }, [goToNeighbourIfAtBoundary]);
 
   // Without this, scrolling an open article out of view by simply continuing
   // to scroll (rather than tapping close) would leave openId set forever:
@@ -494,6 +518,7 @@ export default function WatchFeed({
               <div
                 className="h-full w-full overflow-y-auto no-scrollbar"
                 onTouchStart={handleArticleTouchStart}
+                onTouchMove={handleArticleTouchMove}
                 onTouchEnd={handleArticleTouchEnd}
               >
                 <WatchArticle story={s} onClose={close} onShare={() => onShare(s)} />
