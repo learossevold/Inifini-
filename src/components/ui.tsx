@@ -67,8 +67,26 @@ export function ShareIcon() {
     </svg>
   );
 }
-export function Avatar({ name, size = 32 }: { name: string; size?: number }) {
+/** Profile picture when one is set, initials otherwise. */
+export function Avatar({ name, size = 32, src }: { name: string; size?: number; src?: string | null }) {
   const initials = name.slice(0, 2).toUpperCase();
+
+  if (src) {
+    return (
+      // Avatars come from Supabase Storage at an arbitrary host and are already
+      // resized on upload, so a plain img keeps this simple.
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={src}
+        alt=""
+        width={size}
+        height={size}
+        className="shrink-0 rounded-full object-cover"
+        style={{ width: size, height: size }}
+      />
+    );
+  }
+
   return (
     <span className="inline-flex shrink-0 items-center justify-center rounded-full bg-accentSoft font-sans font-semibold text-accent" style={{ width: size, height: size, fontSize: size * 0.4 }}>
       {initials}
