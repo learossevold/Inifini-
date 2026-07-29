@@ -150,6 +150,19 @@ function stripHtml(s: string): string {
   return s.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+/**
+ * Feeds occasionally carry dates JS cannot parse. `new Date(bad).toISOString()`
+ * throws RangeError, which previously aborted the entire ingestion run over a
+ * single malformed item — so fall back to "now" instead.
+ */
+function safeIsoDate(value: string | undefined): string {
+  if (value) {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
+  }
+  return new Date().toISOString();
+}
+
 // Human-readable labels for clearly marking headlines that link to a
 // non-English-language source (the AI summary is always rewritten in English).
 const LANGUAGE_LABELS: Record<string, string> = {
@@ -316,51 +329,56 @@ export async function runIngestion(maxPerSource = 5): Promise<IngestResult> {
     result.fetched += items.length;
 
     for (const item of items) {
-      const url = item.link?.trim();
-      const rawTitle = stripHtml(item.title ?? '');
-      if (!url || !rawTitle) continue;
+      // One malformed item must never take down the whole run.
+      try {
+        const url = item.link?.trim();
+        const rawTitle = stripHtml(item.title ?? '');
+        if (!url || !rawTitle) continue;
 
-      const excerpt = stripHtml(item.contentSnippet ?? item.content ?? '').slice(0, 1200);
-      const markedTitle = markTitle(rawTitle, source.language);
-      const publishedAt = item.isoDate ?? item.pubDate ?? new Date().toISOString();
-      const category = inferCategory(rawTitle, excerpt, source.category);
-      const importance = inferImportance(rawTitle, source.trust_level);
-      const rssImage = extractRssImage(item);
-      const image = rssImage ?? pickFallback(category, rawTitle);
+        const excerpt = stripHtml(item.contentSnippet ?? item.content ?? '').slice(0, 1200);
+        const markedTitle = markTitle(rawTitle, source.language);
+        const publishedAt = safeIsoDate(item.isoDate ?? item.pubDate);
+        const category = inferCategory(rawTitle, excerpt, source.category);
+        const importance = inferImportance(rawTitle, source.trust_level);
+        const rssImage = extractRssImage(item);
+        const image = rssImage ?? pickFallback(category, rawTitle);
 
-      candidates.push({
-        sourceName: source.name,
-        needsImage: rssImage === null,
-        summaryInput: {
-          title: markedTitle,
-          excerpt,
-          source_name: source.name,
-          source_url: url,
-          category,
-          published_at: publishedAt,
-          language: source.language,
-        },
-        row: {
-          // ai_title (English translation) will override this if the AI returns one
-          title: markedTitle,
-          slug: slugify(rawTitle),
-          original_url: url,
-          source_name: source.name,
-          source_domain: source.domain,
-          category,
-          region: source.region,
-          language: source.language,
-          published_at: new Date(publishedAt).toISOString(),
-          fetched_at: new Date().toISOString(),
-          image_url: image,
-          original_excerpt: excerpt,
-          importance_score: importance,
-          novelty_score: 80,
-          relevance_score: source.region === 'no' ? 75 : 60,
-          status: 'published',
-          is_demo: false,
-        },
-      });
+        candidates.push({
+          sourceName: source.name,
+          needsImage: rssImage === null,
+          summaryInput: {
+            title: markedTitle,
+            excerpt,
+            source_name: source.name,
+            source_url: url,
+            category,
+            published_at: publishedAt,
+            language: source.language,
+          },
+          row: {
+            // ai_title (English translation) will override this if the AI returns one
+            title: markedTitle,
+            slug: slugify(rawTitle),
+            original_url: url,
+            source_name: source.name,
+            source_domain: source.domain,
+            category,
+            region: source.region,
+            language: source.language,
+            published_at: publishedAt,
+            fetched_at: new Date().toISOString(),
+            image_url: image,
+            original_excerpt: excerpt,
+            importance_score: importance,
+            novelty_score: 80,
+            relevance_score: source.region === 'no' ? 75 : 60,
+            status: 'published',
+            is_demo: false,
+          },
+        });
+      } catch (e: any) {
+        result.errors.push({ source: source.name, error: `item skipped: ${e?.message ?? 'unknown'}` });
+      }
     }
   });
 
