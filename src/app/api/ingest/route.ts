@@ -22,7 +22,14 @@ async function handle(req: NextRequest) {
     const result = await runIngestion(5);
     return NextResponse.json(result);
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message ?? 'Ingestion failed' }, { status: 500 });
+    // This endpoint is admin-only, so surface enough to diagnose rather than
+    // just the message — a bare "Invalid time value" says nothing about where.
+    return NextResponse.json({
+      error: e?.message ?? 'Ingestion failed',
+      errorType: e?.name ?? typeof e,
+      where: String(e?.stack ?? '').split('\n').slice(0, 4).join(' | '),
+      commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? 'local',
+    }, { status: 500 });
   }
 }
 

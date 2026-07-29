@@ -84,7 +84,7 @@ export default function AdminPage() {
       const data = await res.json();
       setResummarizeResult(
         res.ok
-          ? data.message ?? `Rewrote ${data.updated}/${data.total} short summaries, ${data.failed} failed. Run again for the next batch.`
+          ? data.message ?? `Rewrote ${data.updated} of ${data.total}${data.failed ? `, ${data.failed} failed` : ''}. ${data.remaining > 0 ? `${data.remaining} still short — run again.` : 'All done.'}`
           : `Failed: ${data.error}`
       );
       await loadStats(password);
