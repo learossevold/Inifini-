@@ -351,6 +351,11 @@ export default function WatchFeed({
   const lastTouchY = useRef(0);
   const redirectingRef = useRef(false);
   const velocitySamples = useRef<{ t: number; y: number }[]>([]);
+  // True from the moment a boundary drag starts redirecting the outer
+  // container through to the moment its coast+settle animation decides the
+  // outcome. While true, the auto-close observer below defers to it — see
+  // that observer for why racing the two was causing a mid-gesture glitch.
+  const redirectActiveRef = useRef(false);
 
   // The article opens inline, in the same snap-scrolling container as the
   // cards, and every card slot — open or closed — is exactly one screen
@@ -471,6 +476,7 @@ export default function WatchFeed({
       // was rather than closing it to the compact card.
       const settle = () => {
         container.style.scrollSnapType = ''; // back to the CSS class's mandatory
+        redirectActiveRef.current = false;
         if (nearest !== originalIndex) setOpenId(null);
       };
       if (Math.abs(distance) < 1) { settle(); return; }
@@ -506,6 +512,7 @@ export default function WatchFeed({
       touchStartY.current = e.touches[0].clientY;
       lastTouchY.current = e.touches[0].clientY;
       redirectingRef.current = false;
+      redirectActiveRef.current = false;
       velocitySamples.current = [{ t: performance.now(), y: e.touches[0].clientY }];
     };
 
@@ -521,6 +528,7 @@ export default function WatchFeed({
         const goingDown = startY - y > 0;
         if (!((goingDown && atBottom) || (!goingDown && atTop))) { lastTouchY.current = y; return; }
         redirectingRef.current = true; // falls through to the redirect branch below for this same event
+        redirectActiveRef.current = true; // see the ref's declaration for why
         const container = containerRef.current;
         if (container) container.style.scrollSnapType = 'none'; // see settleAfterRedirect for why
       }
@@ -574,12 +582,25 @@ export default function WatchFeed({
   // visually covers it — a dead zone exactly one header's height tall where
   // this observer would never fire, leaving the article stuck open right at
   // the boundary a swipe was trying to scroll past.
+  //
+  // Deferring to redirectActiveRef while it's set matters because the live
+  // boundary-drag above also drives this same container's scrollTop, which
+  // this observer sees exactly the same as any other scroll. Without the
+  // guard, a decisive drag could scroll the article's slot fully out of
+  // view *before* the finger lifts, firing this mid-gesture: the article
+  // unmounts on the spot, tearing out the touch listeners attached to its
+  // now-gone scroll element and handing the rest of the same physical touch
+  // sequence to whatever the browser does by default — which is exactly the
+  // shake-then-drift-apart glitch this was producing. The redirect's own
+  // settle logic is the sole decider of the outcome for as long as it's
+  // active; this observer only needs to catch the case it doesn't drive at
+  // all, an article scrolled away by some other means entirely.
   useEffect(() => {
     if (!openId) return;
     const el = document.getElementById(`watch-item-${openId}`);
     if (!el || !containerRef.current) return;
     const obs = new IntersectionObserver(([entry]) => {
-      if (!entry.isIntersecting) setOpenId(null);
+      if (!entry.isIntersecting && !redirectActiveRef.current) setOpenId(null);
     }, { root: containerRef.current, threshold: 0 });
     obs.observe(el);
     return () => obs.disconnect();
