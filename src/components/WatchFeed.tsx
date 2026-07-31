@@ -413,6 +413,36 @@ export default function WatchFeed({
   // from the same gesture once it already has.
   const triggeredRef = useRef(false);
 
+  // The article used to close (setOpenId(null)) the instant the transition
+  // was triggered, while the scroll itself was still animating toward the
+  // neighbouring card. Since every slot is the same size, that meant the
+  // departing slot's content swapped from the article to the compact card
+  // mid-flight — a visible pop partway through, not a clean motion. It now
+  // animates the scroll itself (rather than the browser's built-in smooth
+  // scrollIntoView, whose duration and easing aren't controllable, and
+  // which was the mushier, slower-feeling half of what read as unpleasant
+  // here) with a short, native-flick-shaped ease-out, and only swaps the
+  // slot's content back to the card once that animation has actually
+  // finished — so what's on screen throughout is the article sliding away,
+  // the same way a plain card-to-card flick looks.
+  const animateScrollTo = useCallback((targetTop: number, onDone: () => void) => {
+    const container = containerRef.current;
+    if (!container) { onDone(); return; }
+    const startTop = container.scrollTop;
+    const distance = targetTop - startTop;
+    if (Math.abs(distance) < 1) { onDone(); return; }
+    const DURATION_MS = 260; // matches a quick native flick, not a leisurely smooth-scroll
+    const startTime = performance.now();
+    const step = (now: number) => {
+      const t = Math.min(1, (now - startTime) / DURATION_MS);
+      const eased = 1 - Math.pow(1 - t, 3); // ease-out cubic: fast start, gentle settle
+      container.scrollTop = startTop + distance * eased;
+      if (t < 1) requestAnimationFrame(step);
+      else onDone();
+    };
+    requestAnimationFrame(step);
+  }, []);
+
   const goToNeighbourIfAtBoundary = useCallback((el: HTMLElement, deltaY: number, threshold: number) => {
     if (triggeredRef.current || !openId || Math.abs(deltaY) < threshold) return;
     const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 2;
@@ -422,18 +452,23 @@ export default function WatchFeed({
     const idx = stories.findIndex((s) => s.id === openId);
     const target = stories[idx + direction];
     if (!target) return; // first/last card, nowhere further that way
+    const targetEl = document.getElementById(`watch-item-${target.id}`);
+    const container = containerRef.current;
+    if (!targetEl || !container) return;
     triggeredRef.current = true;
-    document.getElementById(`watch-item-${target.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    // Closed directly here rather than left to the auto-close observer
-    // below: a smooth, CSS-driven scrollIntoView reaches the right final
-    // scrollTop, but doesn't reliably re-fire IntersectionObserver the way
-    // a plain scrollTop assignment does — confirmed directly, the observer
-    // notified once on mount and then never again despite the target
-    // genuinely scrolling out of view. The observer still does its job for
-    // the other case, an article scrolled away by ordinary touch scrolling
-    // on the outer container, which isn't driven by scrollIntoView at all.
-    setOpenId(null);
-  }, [openId, stories]);
+    const containerTop = container.getBoundingClientRect().top;
+    const targetTop = container.scrollTop + (targetEl.getBoundingClientRect().top - containerTop);
+    // Closed only once the animation completes, not left to the auto-close
+    // observer: a scroll driven by direct scrollTop assignment (as this is)
+    // does reliably re-fire IntersectionObserver — confirmed separately —
+    // but by the time it does, the pop described above would already have
+    // happened. Doing it here, at the one moment the code already knows the
+    // transition is finished, sidesteps needing that observer for this path
+    // at all. It still does its job for the other case: an article scrolled
+    // away by ordinary touch scrolling on the outer container, which isn't
+    // driven by this animation.
+    animateScrollTo(targetTop, () => setOpenId(null));
+  }, [openId, stories, animateScrollTo]);
 
   const handleArticleTouchStart = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
     touchStartY.current = e.touches[0].clientY;
