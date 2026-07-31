@@ -348,6 +348,9 @@ export default function WatchFeed({
   const { recordView } = useSession();
   const containerRef = useRef<HTMLDivElement>(null);
   const touchStartY = useRef<number | null>(null);
+  const lastTouchY = useRef(0);
+  const redirectingRef = useRef(false);
+  const velocitySamples = useRef<{ t: number; y: number }[]>([]);
 
   // The article opens inline, in the same snap-scrolling container as the
   // cards, and every card slot — open or closed — is exactly one screen
@@ -402,95 +405,159 @@ export default function WatchFeed({
 
   const openStory = openId ? stories.find((s) => s.id === openId) ?? null : null;
 
-  // A swipe that continues past the article's own scroll boundary moves to
-  // the neighbouring card. This used to fire only on touchend, after the
-  // finger had already lifted — which left a small but real gap between the
-  // gesture finishing and the screen reacting, unlike a normal flick, where
-  // the browser is already moving the content continuously while the finger
-  // is still on the glass. Checking on every touchmove instead, with a
-  // smaller threshold, starts the transition while the drag is still in
-  // progress, closing that gap. triggeredRef stops it firing a second time
-  // from the same gesture once it already has.
-  const triggeredRef = useRef(false);
-
-  // The article used to close (setOpenId(null)) the instant the transition
-  // was triggered, while the scroll itself was still animating toward the
-  // neighbouring card. Since every slot is the same size, that meant the
-  // departing slot's content swapped from the article to the compact card
-  // mid-flight — a visible pop partway through, not a clean motion. It now
-  // animates the scroll itself (rather than the browser's built-in smooth
-  // scrollIntoView, whose duration and easing aren't controllable, and
-  // which was the mushier, slower-feeling half of what read as unpleasant
-  // here) with a short, native-flick-shaped ease-out, and only swaps the
-  // slot's content back to the card once that animation has actually
-  // finished — so what's on screen throughout is the article sliding away,
-  // the same way a plain card-to-card flick looks.
-  const animateScrollTo = useCallback((targetTop: number, onDone: () => void) => {
+  // Every version of "continue scrolling past the article" up to this one
+  // decided, at some threshold, to fire a scripted transition to the
+  // neighbouring card — instant, then animated, then animated and better
+  // timed. All of them still read as distinct from an ordinary card flick,
+  // because none of them were actually tracking the finger: a normal scroll
+  // moves 1:1 with your finger the whole time it's on the glass, and only
+  // gets momentum and a snap once you let go. A threshold-triggered
+  // animation, however well tuned, is a different mechanism wearing the
+  // same clothes.
+  //
+  // This drives the outer container's scrollTop directly, in real time,
+  // from the same touch sequence that's dragging the article — once that
+  // drag reaches the article's own top or bottom edge and keeps going.
+  // Below that edge, nothing here runs at all and the article scrolls
+  // exactly as it always has. At the edge, control simply passes to the
+  // outer container for the rest of the gesture, the same handoff a nested
+  // scrollable gives you for free when the browser's own chaining works —
+  // it just doesn't, reliably, for touch on iOS (confirmed directly, see
+  // the removed 260ms-animation version's history). On release, a short
+  // velocity-based coast plus a settle to the nearest card reproduces the
+  // momentum and snap an ordinary flick gets natively.
+  //
+  // preventDefault on the article's own touchmove is what stops it from
+  // also trying to rubber-band/scroll natively once redirect has taken
+  // over — React attaches onTouchMove as a passive listener, where
+  // preventDefault is silently ignored, so this has to be a real
+  // addEventListener with { passive: false }.
+  //
+  // scroll-snap-type: mandatory turned out to fight this outright, not just
+  // at rest: confirmed in isolation (a plain scrollTop += 5 in a loop, no
+  // React involved) that with mandatory active, every single assignment
+  // gets silently pulled straight back to the current nearest snap point —
+  // scrollTop simply never left 0 no matter how many times or how slowly it
+  // was incremented. The container's snap-type is switched off for the
+  // duration of the drag and the settle animation below (which computes and
+  // eases to the exact nearest card itself, so it doesn't need native snap
+  // correction either), and restored once that animation lands exactly on
+  // a valid snap coordinate — at which point re-enabling it is a no-op.
+  const settleAfterRedirect = useCallback((initialVelocity: number, originalIndex: number) => {
     const container = containerRef.current;
-    if (!container) { onDone(); return; }
-    const startTop = container.scrollTop;
-    const distance = targetTop - startTop;
-    if (Math.abs(distance) < 1) { onDone(); return; }
-    const DURATION_MS = 260; // matches a quick native flick, not a leisurely smooth-scroll
-    const startTime = performance.now();
-    const step = (now: number) => {
-      const t = Math.min(1, (now - startTime) / DURATION_MS);
-      const eased = 1 - Math.pow(1 - t, 3); // ease-out cubic: fast start, gentle settle
-      container.scrollTop = startTop + distance * eased;
-      if (t < 1) requestAnimationFrame(step);
-      else onDone();
+    if (!container) return;
+    const cardHeight = container.clientHeight || 1;
+    const maxIndex = stories.length - 1;
+
+    const finish = () => {
+      const nearest = Math.max(0, Math.min(maxIndex, Math.round(container.scrollTop / cardHeight)));
+      const targetTop = nearest * cardHeight;
+      const startTop = container.scrollTop;
+      const distance = targetTop - startTop;
+      // Closed only once settled, not left to the auto-close observer: by
+      // the time that fires (or doesn't, for a script-driven scroll —
+      // confirmed unreliable after scrollIntoView specifically), the article
+      // would already need to look closed. Doing it here, right when the
+      // code knows the transition is actually finished, avoids depending on
+      // it for this path. The observer still covers the other case: an
+      // article scrolled away by ordinary touch scrolling on the outer
+      // container, which isn't driven by this at all.
+      //
+      // Only closing when the settle actually lands on a different card —
+      // not just any settle — matters because a light nudge without enough
+      // momentum settles right back to the same card it started on. That's
+      // a "released before committing" gesture, same as a native scroll
+      // that springs back, and should leave the article open exactly as it
+      // was rather than closing it to the compact card.
+      const settle = () => {
+        container.style.scrollSnapType = ''; // back to the CSS class's mandatory
+        if (nearest !== originalIndex) setOpenId(null);
+      };
+      if (Math.abs(distance) < 1) { settle(); return; }
+      const DURATION_MS = 200;
+      const startTime = performance.now();
+      const step = (now: number) => {
+        const t = Math.min(1, (now - startTime) / DURATION_MS);
+        const eased = 1 - Math.pow(1 - t, 3); // ease-out cubic
+        container.scrollTop = startTop + distance * eased;
+        if (t < 1) { requestAnimationFrame(step); return; }
+        settle();
+      };
+      requestAnimationFrame(step);
     };
-    requestAnimationFrame(step);
-  }, []);
 
-  const goToNeighbourIfAtBoundary = useCallback((el: HTMLElement, deltaY: number, threshold: number) => {
-    if (triggeredRef.current || !openId || Math.abs(deltaY) < threshold) return;
-    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 2;
-    const atTop = el.scrollTop <= 0;
-    const direction = deltaY > 0 && atBottom ? 1 : deltaY < 0 && atTop ? -1 : 0;
-    if (direction === 0) return; // not at the boundary in the swiped direction: let it scroll normally
-    const idx = stories.findIndex((s) => s.id === openId);
-    const target = stories[idx + direction];
-    if (!target) return; // first/last card, nowhere further that way
-    const targetEl = document.getElementById(`watch-item-${target.id}`);
-    const container = containerRef.current;
-    if (!targetEl || !container) return;
-    triggeredRef.current = true;
-    const containerTop = container.getBoundingClientRect().top;
-    const targetTop = container.scrollTop + (targetEl.getBoundingClientRect().top - containerTop);
-    // Closed only once the animation completes, not left to the auto-close
-    // observer: a scroll driven by direct scrollTop assignment (as this is)
-    // does reliably re-fire IntersectionObserver — confirmed separately —
-    // but by the time it does, the pop described above would already have
-    // happened. Doing it here, at the one moment the code already knows the
-    // transition is finished, sidesteps needing that observer for this path
-    // at all. It still does its job for the other case: an article scrolled
-    // away by ordinary touch scrolling on the outer container, which isn't
-    // driven by this animation.
-    animateScrollTo(targetTop, () => setOpenId(null));
-  }, [openId, stories, animateScrollTo]);
+    // px/ms, clamped so one noisy sample can't fling it wildly off.
+    const v = Math.max(-3, Math.min(3, initialVelocity));
+    if (Math.abs(v) < 0.15) { finish(); return; }
+    const coast = (velocity: number) => {
+      if (Math.abs(velocity) < 0.05) { finish(); return; }
+      container.scrollTop += velocity * 16; // ~px per frame at 60fps
+      requestAnimationFrame(() => coast(velocity * 0.94)); // friction
+    };
+    coast(v);
+  }, [stories.length]);
 
-  const handleArticleTouchStart = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
-    touchStartY.current = e.touches[0].clientY;
-    triggeredRef.current = false;
-  }, []);
+  useEffect(() => {
+    if (!openId) return;
+    const scrollEl = document.getElementById(`watch-item-${openId}`)?.querySelector<HTMLElement>('.overflow-y-auto');
+    if (!scrollEl) return;
 
-  const handleArticleTouchMove = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
-    const startY = touchStartY.current;
-    if (startY === null) return;
-    const LIVE_THRESHOLD = 24; // small: this fires while the drag is still moving, not after it ends
-    goToNeighbourIfAtBoundary(e.currentTarget, startY - e.touches[0].clientY, LIVE_THRESHOLD);
-  }, [goToNeighbourIfAtBoundary]);
+    const onTouchStart = (e: TouchEvent) => {
+      touchStartY.current = e.touches[0].clientY;
+      lastTouchY.current = e.touches[0].clientY;
+      redirectingRef.current = false;
+      velocitySamples.current = [{ t: performance.now(), y: e.touches[0].clientY }];
+    };
 
-  const handleArticleTouchEnd = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
-    const startY = touchStartY.current;
-    touchStartY.current = null;
-    if (startY === null) return;
-    // Fallback for a slow drag that never crossed the live threshold above
-    // but still travelled far enough in total by the time the finger lifts.
-    const END_THRESHOLD = 60;
-    goToNeighbourIfAtBoundary(e.currentTarget, startY - e.changedTouches[0].clientY, END_THRESHOLD);
-  }, [goToNeighbourIfAtBoundary]);
+    const onTouchMove = (e: TouchEvent) => {
+      const y = e.touches[0].clientY;
+      if (!redirectingRef.current) {
+        const startY = touchStartY.current;
+        if (startY === null) return;
+        const THRESHOLD = 24; // enough to distinguish intent from a small settling wobble
+        if (Math.abs(startY - y) < THRESHOLD) { lastTouchY.current = y; return; }
+        const atBottom = scrollEl.scrollTop + scrollEl.clientHeight >= scrollEl.scrollHeight - 2;
+        const atTop = scrollEl.scrollTop <= 0;
+        const goingDown = startY - y > 0;
+        if (!((goingDown && atBottom) || (!goingDown && atTop))) { lastTouchY.current = y; return; }
+        redirectingRef.current = true; // falls through to the redirect branch below for this same event
+        const container = containerRef.current;
+        if (container) container.style.scrollSnapType = 'none'; // see settleAfterRedirect for why
+      }
+      e.preventDefault();
+      const container = containerRef.current;
+      if (container) container.scrollTop += lastTouchY.current - y;
+      lastTouchY.current = y;
+      const samples = velocitySamples.current;
+      samples.push({ t: performance.now(), y });
+      if (samples.length > 5) samples.shift();
+    };
+
+    const onTouchEnd = () => {
+      touchStartY.current = null;
+      if (!redirectingRef.current) return;
+      redirectingRef.current = false;
+      const samples = velocitySamples.current;
+      let velocity = 0;
+      if (samples.length >= 2) {
+        const first = samples[0];
+        const last = samples[samples.length - 1];
+        const dt = last.t - first.t;
+        if (dt > 0) velocity = (first.y - last.y) / dt; // px/ms, positive = finger moved up
+      }
+      const originalIndex = stories.findIndex((s) => s.id === openId);
+      settleAfterRedirect(velocity, originalIndex);
+    };
+
+    scrollEl.addEventListener('touchstart', onTouchStart, { passive: true });
+    scrollEl.addEventListener('touchmove', onTouchMove, { passive: false });
+    scrollEl.addEventListener('touchend', onTouchEnd, { passive: true });
+    return () => {
+      scrollEl.removeEventListener('touchstart', onTouchStart);
+      scrollEl.removeEventListener('touchmove', onTouchMove);
+      scrollEl.removeEventListener('touchend', onTouchEnd);
+    };
+  }, [openId, settleAfterRedirect]);
 
   // Without this, scrolling an open article out of view by simply continuing
   // to scroll (rather than tapping close) would leave openId set forever:
@@ -550,12 +617,10 @@ export default function WatchFeed({
           // above open() for why that uniformity is what makes this work.
           <div key={s.id} id={`watch-item-${s.id}`} data-watch-card data-idx={i} className="snap-screen relative h-full w-full overflow-hidden bg-night">
             {openId === s.id ? (
-              <div
-                className="h-full w-full overflow-y-auto no-scrollbar"
-                onTouchStart={handleArticleTouchStart}
-                onTouchMove={handleArticleTouchMove}
-                onTouchEnd={handleArticleTouchEnd}
-              >
+              // Touch handling for the boundary-swipe live-redirect lives in
+              // a useEffect above, as a real (non-passive) addEventListener
+              // on this element found by id — not JSX props here.
+              <div className="h-full w-full overflow-y-auto no-scrollbar">
                 <WatchArticle story={s} onClose={close} onShare={() => onShare(s)} />
               </div>
             ) : (
