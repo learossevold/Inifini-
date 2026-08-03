@@ -448,59 +448,76 @@ export default function WatchFeed({
   // eases to the exact nearest card itself, so it doesn't need native snap
   // correction either), and restored once that animation lands exactly on
   // a valid snap coordinate — at which point re-enabling it is a no-op.
+  // Which card to land on is decided once, right here, the same way any
+  // native swipeable view decides it — not by hand-simulating the
+  // browser's own momentum curve first and letting wherever that lands
+  // decide. That two-step version (coast the actual pixels by a made-up
+  // friction constant, *then* look at where it ended up) was the bug: a
+  // real fling is released well before it's travelled anywhere near its
+  // eventual distance, because the finger commits by speed, not distance —
+  // the deceleration afterwards is the browser's, not something this code
+  // was ever going to reproduce by guessing a decay constant. Our decay was
+  // short of that in practice, so a normal-speed swipe fell short of the
+  // halfway point, sprang back, and needed a second swipe to actually
+  // advance — plus the coast-then-settle sequence stacked two separate
+  // animations back to back, reading as slow next to a native single snap.
+  //
+  // So: an ordinary flick commits to the next card immediately, by speed
+  // alone, exactly like a native scroll-snap fling does. Anything slower
+  // instead goes by how far past the halfway mark it's actually been
+  // dragged. Either way there's exactly one animation from here to the
+  // decided card, at a fixed native-feeling duration — no separate coast.
   const settleAfterRedirect = useCallback((initialVelocity: number, originalIndex: number) => {
     const container = containerRef.current;
     if (!container) return;
     const cardHeight = container.clientHeight || 1;
     const maxIndex = stories.length - 1;
 
-    const finish = () => {
-      const nearest = Math.max(0, Math.min(maxIndex, Math.round(container.scrollTop / cardHeight)));
-      const targetTop = nearest * cardHeight;
-      const startTop = container.scrollTop;
-      const distance = targetTop - startTop;
-      // Closed only once settled, not left to the auto-close observer: by
-      // the time that fires (or doesn't, for a script-driven scroll —
-      // confirmed unreliable after scrollIntoView specifically), the article
-      // would already need to look closed. Doing it here, right when the
-      // code knows the transition is actually finished, avoids depending on
-      // it for this path. The observer still covers the other case: an
-      // article scrolled away by ordinary touch scrolling on the outer
-      // container, which isn't driven by this at all.
-      //
-      // Only closing when the settle actually lands on a different card —
-      // not just any settle — matters because a light nudge without enough
-      // momentum settles right back to the same card it started on. That's
-      // a "released before committing" gesture, same as a native scroll
-      // that springs back, and should leave the article open exactly as it
-      // was rather than closing it to the compact card.
-      const settle = () => {
-        container.style.scrollSnapType = ''; // back to the CSS class's mandatory
-        redirectActiveRef.current = false;
-        if (nearest !== originalIndex) setOpenId(null);
-      };
-      if (Math.abs(distance) < 1) { settle(); return; }
-      const DURATION_MS = 200;
-      const startTime = performance.now();
-      const step = (now: number) => {
-        const t = Math.min(1, (now - startTime) / DURATION_MS);
-        const eased = 1 - Math.pow(1 - t, 3); // ease-out cubic
-        container.scrollTop = startTop + distance * eased;
-        if (t < 1) { requestAnimationFrame(step); return; }
-        settle();
-      };
-      requestAnimationFrame(step);
-    };
+    const originalTop = originalIndex * cardHeight;
+    const dragDistance = container.scrollTop - originalTop;
+    const VELOCITY_COMMIT = 0.35; // px/ms — an ordinary flick, not a maximal one
+    let targetIndex = originalIndex;
+    if (Math.abs(initialVelocity) > VELOCITY_COMMIT) {
+      targetIndex = originalIndex + (initialVelocity > 0 ? 1 : -1);
+    } else if (Math.abs(dragDistance) > cardHeight / 2) {
+      targetIndex = originalIndex + (dragDistance > 0 ? 1 : -1);
+    }
+    targetIndex = Math.max(0, Math.min(maxIndex, targetIndex));
 
-    // px/ms, clamped so one noisy sample can't fling it wildly off.
-    const v = Math.max(-3, Math.min(3, initialVelocity));
-    if (Math.abs(v) < 0.15) { finish(); return; }
-    const coast = (velocity: number) => {
-      if (Math.abs(velocity) < 0.05) { finish(); return; }
-      container.scrollTop += velocity * 16; // ~px per frame at 60fps
-      requestAnimationFrame(() => coast(velocity * 0.94)); // friction
+    const targetTop = targetIndex * cardHeight;
+    const startTop = container.scrollTop;
+    const distance = targetTop - startTop;
+    // Closed only once settled, not left to the auto-close observer: by
+    // the time that fires (or doesn't, for a script-driven scroll —
+    // confirmed unreliable after scrollIntoView specifically), the article
+    // would already need to look closed. Doing it here, right when the
+    // code knows the transition is actually finished, avoids depending on
+    // it for this path. The observer still covers the other case: an
+    // article scrolled away by ordinary touch scrolling on the outer
+    // container, which isn't driven by this at all.
+    //
+    // Only closing when the target is actually a different card — not just
+    // any settle — matters because a slow, short drag lands back on the
+    // same card it started on. That's a "released before committing"
+    // gesture, same as a native scroll that springs back, and should leave
+    // the article open exactly as it was rather than closing it to the
+    // compact card.
+    const settle = () => {
+      container.style.scrollSnapType = ''; // back to the CSS class's mandatory
+      redirectActiveRef.current = false;
+      if (targetIndex !== originalIndex) setOpenId(null);
     };
-    coast(v);
+    if (Math.abs(distance) < 1) { settle(); return; }
+    const DURATION_MS = 240;
+    const startTime = performance.now();
+    const step = (now: number) => {
+      const t = Math.min(1, (now - startTime) / DURATION_MS);
+      const eased = 1 - Math.pow(1 - t, 3); // ease-out cubic
+      container.scrollTop = startTop + distance * eased;
+      if (t < 1) { requestAnimationFrame(step); return; }
+      settle();
+    };
+    requestAnimationFrame(step);
   }, [stories.length]);
 
   useEffect(() => {
