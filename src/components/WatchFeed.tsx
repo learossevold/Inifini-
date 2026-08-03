@@ -560,6 +560,18 @@ export default function WatchFeed({
         redirectActiveRef.current = true; // see the ref's declaration for why
         const container = containerRef.current;
         if (container) container.style.scrollSnapType = 'none'; // see settleAfterRedirect for why
+        // Velocity is measured only from here on, not from the original
+        // touchstart: a finger can rest on the article for a while (reading,
+        // or the small pre-arm wobble) before the actual continue-scrolling
+        // motion begins, and that whole idle stretch was staying in the
+        // window as its oldest sample until enough later samples pushed it
+        // out — which a short, decisive swipe often never does within only
+        // 5 samples. That stale sample diluted dt, so even a genuinely fast
+        // swipe measured as slow, fell under the commit threshold, and
+        // sprang back — reading as "the first swipe hops, then a second one
+        // finally works." Resetting the window right as the redirect arms
+        // means it only ever reflects the swipe that's actually happening.
+        velocitySamples.current = [{ t: performance.now(), y }];
       }
       e.preventDefault();
       const container = containerRef.current;
