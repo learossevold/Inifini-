@@ -521,7 +521,19 @@ export default function WatchFeed({
       if (!redirectingRef.current) {
         const startY = touchStartY.current;
         if (startY === null) return;
-        const THRESHOLD = 24; // enough to distinguish intent from a small settling wobble
+        // Small, not the ~24px it used to be: this measures from the whole
+        // gesture's start, not from the moment the boundary was actually
+        // reached, so when a swipe starts already resting at the article's
+        // edge — the ordinary "keep scrolling in the same motion" case —
+        // every pixel of this threshold was dead time with nothing on
+        // screen moving at all (article already maxed, redirect not yet
+        // armed). Confirmed directly: instrumenting both scrollTops during
+        // a slow drag from rest showed zero movement anywhere for the first
+        // 24px of finger travel, then a sudden start — exactly the
+        // stutter being reported. Small enough now to be below one frame's
+        // worth of perceptible delay, while still filtering out sub-pixel
+        // jitter that shouldn't arm it on its own (e.g. during a tap).
+        const THRESHOLD = 4;
         if (Math.abs(startY - y) < THRESHOLD) { lastTouchY.current = y; return; }
         const atBottom = scrollEl.scrollTop + scrollEl.clientHeight >= scrollEl.scrollHeight - 2;
         const atTop = scrollEl.scrollTop <= 0;
