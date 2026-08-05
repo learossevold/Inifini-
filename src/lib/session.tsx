@@ -8,6 +8,7 @@ import {
 } from '@/lib/mock-data';
 import { supabaseBrowser, supabaseConfigured } from '@/lib/supabase';
 import * as social from '@/lib/social';
+import { clearReadingHistory, getEditorProfile, EditorProfile } from '@/lib/affinity';
 import { removeAvatar, uploadAvatar } from '@/lib/avatar';
 
 /**
@@ -68,6 +69,8 @@ interface SessionAPI extends SessionState {
   loadCollectionStories: (collectionId: string) => Promise<Story[]>;
   recordView: (storyId: string) => void;
   loadReadingSummary: () => Promise<ReadingSummary | null>;
+  loadEditorProfile: () => Promise<EditorProfile | null>;
+  resetEditorLearning: () => Promise<void>;
   loadThread: (otherId: string) => Promise<Message[]>;
   sendMessage: (otherId: string, content: string) => Promise<void>;
   markConversationRead: (otherId: string) => void;
@@ -418,6 +421,20 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return null;
   }, [me]);
 
+  // Read with the reader's own session, not the service role: row-level
+  // security then guarantees this can only ever describe them, and the
+  // profile screen needs no privileged endpoint of its own.
+  const loadEditorProfile = useCallback(async (): Promise<EditorProfile | null> => {
+    const db = supabaseBrowser();
+    if (db && me) return getEditorProfile(db, me.id);
+    return null;
+  }, [me]);
+
+  const resetEditorLearning = useCallback(async (): Promise<void> => {
+    const db = supabaseBrowser();
+    if (db && me) await clearReadingHistory(db, me.id);
+  }, [me]);
+
   const loadThread = useCallback(async (otherId: string): Promise<Message[]> => {
     const db = supabaseBrowser();
     if (db && me) return social.fetchThread(db, me.id, otherId);
@@ -550,6 +567,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     sendFriendRequest, acceptFriend, declineFriend, shareToFriend,
     loadStoriesByIds, collections, refreshCollections, createCollection, deleteCollection,
     collectionsForStory, setInCollection, loadCollectionStories, recordView, loadReadingSummary,
+    loadEditorProfile, resetEditorLearning,
     loadThread, sendMessage, markConversationRead,
     blockUser, unblockUser, listBlocked, deleteAccount,
     addComment, likeComment, ensureComments,
