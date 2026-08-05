@@ -17,13 +17,14 @@ function Section({ label, children }: { label: string; children: React.ReactNode
 }
 
 export default function ArticleView({
-  story, related, onClose, onOpen, onShare,
+  story, related, onClose, onOpen, onShare, onComment,
 }: {
   story: Story;
   related: Story[];
   onClose: () => void;
   onOpen: (s: Story) => void;
   onShare: (s: Story) => void;
+  onComment: (s: Story) => void;
 }) {
   const [imgFailed, setImgFailed] = useState(false);
   const date = new Date(story.published_at);
@@ -55,7 +56,12 @@ export default function ArticleView({
       )}
 
       <div className="mt-4">
-        <EngagementBar story={story} onComment={() => { /* already in view */ }} onShare={() => onShare(story)} />
+        {/* Opens the same quick-comment sheet as the collapsed card, rather
+            than leaving "already in view" as the only way to comment — that
+            meant scrolling past key points, background and the original-link
+            block to reach the comment box at the very bottom, which read as
+            "commenting doesn't work" rather than "it's further down". */}
+        <EngagementBar story={story} onComment={() => onComment(story)} onShare={() => onShare(story)} />
       </div>
 
       <p className="mt-5 font-serif text-[19px] leading-relaxed">{story.ai_medium_summary}</p>
