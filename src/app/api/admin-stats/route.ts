@@ -41,8 +41,14 @@ export async function GET(req: NextRequest) {
   let recent: any[] | null;
   let waitlistRes: { count?: number | null };
   try {
+    // Counting *published* stories specifically, not every row regardless of
+    // status, matters here: the feed itself (getFeed, in lib/stories.ts)
+    // only ever reads status = 'published', so that's the number that
+    // actually predicts whether a visitor sees real news or the demo
+    // fallback — a raw row count could stay non-zero and misleadingly say
+    // "live" even if every one of those rows were stuck unpublished.
     [{ count: storyCount }, { data: sources }, { data: recent }, waitlistRes] = await Promise.all([
-      db.from('stories').select('*', { count: 'exact', head: true }),
+      db.from('stories').select('*', { count: 'exact', head: true }).eq('status', 'published'),
       db.from('sources').select('name, domain, active, last_status, last_fetched_at').order('name'),
       db.from('stories').select('title, source_name, published_at, is_demo, fetched_at').order('fetched_at', { ascending: false }).limit(10),
       admin ? admin.from('waitlist').select('*', { count: 'exact', head: true }) : Promise.resolve({ count: 0 }),
@@ -57,7 +63,10 @@ export async function GET(req: NextRequest) {
   }, null);
 
   return NextResponse.json({
-    mode: 'live',
+    // Mirrors getFeed's own live-vs-mock decision exactly (real.length > 0),
+    // so this is the honest answer to "is a visitor seeing real news right
+    // now" — not just "is the database reachable".
+    mode: (storyCount ?? 0) > 0 ? 'live' : 'mock',
     storyCount: storyCount ?? 0,
     sourceCount: sources?.length ?? RSS_SOURCES.length,
     lastIngestion,
