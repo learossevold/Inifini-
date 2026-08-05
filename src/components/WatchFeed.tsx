@@ -241,7 +241,9 @@ function WatchCard({
 
       {/* Headline + animated captions */}
       <div className="absolute inset-x-0 bottom-0 p-5 pb-8">
-        <h2 className="font-serif text-[26px] font-bold leading-[1.12]">{story.title}</h2>
+        {/* Sized down from 26px so the caption underneath — the actual pitch
+            for tapping through — doesn't read as an afterthought next to it. */}
+        <h2 className="font-serif text-[22px] font-bold leading-[1.12]">{story.title}</h2>
         <div className="mt-3 min-h-[3.5rem]">
           <p key={captionIdx} className="animate-fadeUp font-sans text-[17px] font-medium leading-snug text-white/95">{chunks[captionIdx]}</p>
         </div>

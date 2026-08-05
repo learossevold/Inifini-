@@ -1,5 +1,6 @@
 import { Story, Category, CATEGORIES } from './types';
 import { RSS_SOURCES } from '@/config/sources';
+import { Affinity } from './affinity';
 
 const CATEGORY_PRIORITY: Record<string, number> = Object.fromEntries(CATEGORIES.map((c) => [c.id, c.priority]));
 
@@ -29,22 +30,35 @@ function agePenalty(publishedAt: string): number {
   return Math.min(60, (days - 2) * 6);
 }
 
-export function scoreStory(story: Story, selected: Category | 'top' = 'top'): number {
+export function scoreStory(story: Story, selected: Category | 'top' = 'top', affinity?: Affinity): number {
   const recency = recencyScore(story.published_at);
   const interestBoost = selected !== 'top' && story.category === selected ? 25 : 0;
   const breakingBoost = story.importance_score >= 80 && recency > 60 ? 30 : 0;
+  // Learned on top of the declared interest, not instead of it: onboarding
+  // picks are still the starting point (interestBoost above), and actual
+  // engagement — already normalised to this one user's own 0..1 scale in
+  // getUserAffinity — nudges the order further from there as a history
+  // builds up. A category or source with no engagement yet contributes
+  // nothing, so a brand-new account ranks exactly as it did before this.
+  const categoryAffinityBoost = (affinity?.categories[story.category] ?? 0) * 20;
+  const sourceAffinityBoost = (affinity?.sources[story.source_domain] ?? 0) * 10;
   return (
     recency * 0.3 + story.importance_score * 0.28 + story.novelty_score * 0.1 +
     (CATEGORY_PRIORITY[story.category] ?? 30) * 0.12 + trustFor(story.source_domain) * 0.08 +
-    story.relevance_score * 0.12 + interestBoost + breakingBoost - agePenalty(story.published_at)
+    story.relevance_score * 0.12 + interestBoost + breakingBoost + categoryAffinityBoost + sourceAffinityBoost - agePenalty(story.published_at)
   );
 }
 
 /**
- * News tab: all categories. Following tab: filter to followed interests
- * and/or followed sources, but keep urgent breaking news regardless.
+ * News tab: all categories, no personal signal — same feed for everyone,
+ * on purpose (see the "News vs Explore" split: News is where "if something
+ * important happens, you'll find it here" has to hold regardless of what
+ * anyone reads). Following/Explore tab: filter to followed interests and/or
+ * sources, then let actual engagement history further shape the order
+ * within that — but keep urgent breaking news regardless, whatever anyone
+ * happens to read.
  */
-export function rankStories(stories: Story[], interests: Category[] = [], onlyInterests = false, followedSources: string[] = []): Story[] {
+export function rankStories(stories: Story[], interests: Category[] = [], onlyInterests = false, followedSources: string[] = [], affinity?: Affinity): Story[] {
   let pool = stories;
   if (onlyInterests && (interests.length || followedSources.length)) {
     pool = stories.filter(
@@ -53,7 +67,8 @@ export function rankStories(stories: Story[], interests: Category[] = [], onlyIn
     );
   }
   const primary = interests[0] ?? 'top';
-  return [...pool].sort((a, b) => scoreStory(b, primary) - scoreStory(a, primary));
+  const useAffinity = onlyInterests ? affinity : undefined; // News never gets a personal boost
+  return [...pool].sort((a, b) => scoreStory(b, primary, useAffinity) - scoreStory(a, primary, useAffinity));
 }
 
 export function pickBreaking(stories: Story[], limit = 8): Story[] {

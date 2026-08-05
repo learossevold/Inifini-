@@ -39,7 +39,10 @@ export default function StoryCard({
           {showDemoTag && story.is_demo && <span className="rounded-sm bg-accentSoft px-1.5 py-0.5 text-[9px] font-semibold tracking-wider text-accent">DEMO</span>}
         </div>
 
-        <h2 className={`mt-1.5 font-serif font-semibold leading-[1.12] tracking-[-0.01em] group-active:text-accent ${lead ? 'text-[27px]' : 'text-[22px]'}`}>
+        {/* Sized down from 27/22px so the summary line below reads as part
+            of the pitch, not an afterthought under a headline that took
+            most of the card's attention on its own. */}
+        <h2 className={`mt-1.5 font-serif font-semibold leading-[1.12] tracking-[-0.01em] group-active:text-accent ${lead ? 'text-[23px]' : 'text-[19px]'}`}>
           {story.title}
         </h2>
         <p className="mt-2 font-serif text-[16px] leading-relaxed text-ink/80">{story.ai_short_summary}</p>
