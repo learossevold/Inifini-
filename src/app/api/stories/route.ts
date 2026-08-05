@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
         // request, not a failure — Explore already works fine on the
         // interest/source filter alone without it.
         const { data: userData } = await admin.auth.getUser(token);
-        if (userData?.user?.id) affinity = await getUserAffinity(userData.user.id);
+        if (userData?.user?.id) affinity = await getUserAffinity(admin, userData.user.id);
       }
     }
 

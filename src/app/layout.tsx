@@ -3,6 +3,7 @@ import { Inter, Fraunces } from 'next/font/google';
 import './globals.css';
 import { SessionProvider } from '@/lib/session';
 import AuthGate from '@/components/AuthGate';
+import Splash from '@/components/Splash';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' });
 // italic is only downloaded by the browser on the pages that actually render
@@ -22,6 +23,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${inter.variable} ${fraunces.variable}`}>
       <body className="bg-paper text-ink font-sans antialiased">
+        <Splash />
         <SessionProvider>
           <AuthGate>{children}</AuthGate>
         </SessionProvider>

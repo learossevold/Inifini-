@@ -3,19 +3,20 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { useEffect, useState } from 'react';
-import { CATEGORIES, Category, ReadingSummary, Story } from '@/lib/types';
+import { CATEGORIES, Category, Story } from '@/lib/types';
 import { useSession } from '@/lib/session';
 import { RSS_SOURCES } from '@/config/sources';
 import { Avatar, categoryLabel, timeAgo } from '@/components/ui';
 import NotificationToggle from '@/components/NotificationToggle';
 import AccountSettings from '@/components/AccountSettings';
 import EditProfileSheet from '@/components/EditProfileSheet';
+import AIEditorPanel from '@/components/AIEditorPanel';
 
-type Panel = 'saved' | 'liked' | 'interests';
+type Panel = 'saved' | 'liked';
 
 function PanelIcon({ name, active }: { name: Panel; active: boolean }) {
   const common = {
-    width: 22, height: 22, viewBox: '0 0 24 24',
+    width: 20, height: 20, viewBox: '0 0 24 24',
     fill: active ? 'currentColor' : 'none',
     stroke: 'currentColor', strokeWidth: 1.8,
     strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const,
@@ -25,8 +26,6 @@ function PanelIcon({ name, active }: { name: Panel; active: boolean }) {
       return <svg {...common}><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" /></svg>;
     case 'liked':
       return <svg {...common}><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z" /></svg>;
-    case 'interests':
-      return <svg {...common} fill="none"><path d="M12 3l2.1 5.3L20 9.6l-4 4.1.9 5.9L12 16.9 7.1 19.6l.9-5.9-4-4.1 5.9-1.3z" /></svg>;
   }
 }
 
@@ -55,7 +54,7 @@ export default function ProfilePage() {
   const {
     me, interests, setInterests, followedSources, toggleSource,
     saves, likes, configured, canAct, promptSignIn, loadStoriesByIds, signOut,
-    collections, deleteCollection, loadCollectionStories, loadReadingSummary,
+    collections, deleteCollection, loadCollectionStories,
   } = useSession();
 
   const [panel, setPanel] = useState<Panel>('saved');
@@ -65,7 +64,7 @@ export default function ProfilePage() {
   const [editOpen, setEditOpen] = useState(false);
   const [openCollection, setOpenCollection] = useState<string | null>(null);
   const [collectionStories, setCollectionStories] = useState<Story[] | null>(null);
-  const [reading, setReading] = useState<ReadingSummary | null>(null);
+  const [interestsOpen, setInterestsOpen] = useState(false);
 
   // Saved and liked ids are resolved against the database, not the demo set,
   // so they work for real accounts.
@@ -88,12 +87,6 @@ export default function ProfilePage() {
     loadCollectionStories(openCollection).then((s) => { if (!cancelled) setCollectionStories(s); });
     return () => { cancelled = true; };
   }, [openCollection, loadCollectionStories]);
-
-  useEffect(() => {
-    let cancelled = false;
-    loadReadingSummary().then((r) => { if (!cancelled) setReading(r); });
-    return () => { cancelled = true; };
-  }, [loadReadingSummary]);
 
   const toggleInterest = (c: Category) =>
     setInterests(interests.includes(c) ? interests.filter((x) => x !== c) : [...interests, c]);
@@ -178,52 +171,29 @@ export default function ProfilePage() {
         </dl>
       </section>
 
-      {/* Your own month, never compared to anyone else's. */}
-      {reading && reading.storiesRead > 0 && (
-        <section className="mx-5 mt-6 rounded-xl border border-rule bg-white/60 px-4 py-4">
-          <h2 className="font-sans text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
-            Your reading this month
-          </h2>
-          <p className="mt-2 font-serif text-[17px] leading-snug">
-            <span className="font-bold">{reading.storiesRead}</span>{' '}
-            {reading.storiesRead === 1 ? 'story' : 'stories'}, about{' '}
-            <span className="font-bold">{reading.minutes}</span> minutes of reading.
-          </p>
+      {/* The editor comes before the reader's own filing, because meeting it
+          is the point: what shapes the feed should be the first thing on
+          this page, not something buried under settings. This absorbed the
+          old standalone "Your reading this month" box — one place that says
+          what Inifini knows, rather than two that half-overlap. */}
+      <AIEditorPanel />
 
-          {reading.topCategories.length > 0 && (
-            <div className="mt-3">
-              <p className="text-[12px] text-muted">Mostly about</p>
-              <div className="mt-1.5 flex flex-wrap gap-1.5">
-                {reading.topCategories.map((c) => (
-                  <span key={c.id} className="rounded-full bg-accentSoft px-3 py-1 text-[12.5px] font-medium text-accent">
-                    {c.label} · {c.count}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {reading.topSources.length > 0 && (
-            <div className="mt-3">
-              <p className="text-[12px] text-muted">Mostly from</p>
-              <p className="mt-0.5 text-[13.5px]">{reading.topSources.map((s) => s.name).join(', ')}</p>
-            </div>
-          )}
-        </section>
-      )}
-
-      {/* Panels */}
-      <nav className="mt-6 flex border-b border-rule" role="tablist">
-        {(['saved', 'liked', 'interests'] as Panel[]).map((p) => (
+      {/* Your activity */}
+      <h2 className="mt-8 px-5 font-sans text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+        Your activity
+      </h2>
+      <nav className="mt-2 flex border-b border-rule" role="tablist">
+        {(['saved', 'liked'] as Panel[]).map((p) => (
           <button
             key={p}
             role="tab"
             aria-selected={panel === p}
-            aria-label={p === 'saved' ? 'Saved stories' : p === 'liked' ? 'Liked stories' : 'Your interests'}
+            aria-label={p === 'saved' ? 'Saved stories' : 'Liked stories'}
             onClick={() => setPanel(p)}
-            className={`relative flex flex-1 justify-center py-3 ${panel === p ? 'text-ink' : 'text-muted'}`}
+            className={`relative flex flex-1 items-center justify-center gap-2 py-3 text-[13.5px] ${panel === p ? 'font-semibold text-ink' : 'text-muted'}`}
           >
             <PanelIcon name={p} active={panel === p} />
+            {p === 'saved' ? 'Saved' : 'Liked'}
             {panel === p && <span className="absolute inset-x-0 bottom-0 mx-auto h-0.5 w-12 rounded-full bg-accent" />}
           </button>
         ))}
@@ -291,9 +261,34 @@ export default function ProfilePage() {
           )
         )}
 
-        {panel === 'interests' && (
-          <div className="py-5">
-            <h2 className="font-sans text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">Topics</h2>
+      </div>
+
+      {/* Interests: the manual controls behind the editor, not a feed of its
+          own — collapsed by default so the page reads as "here is what I
+          know about you", with the dials available underneath rather than
+          competing for the same attention. */}
+      <section className="mt-8 border-t border-rule px-5 pt-5">
+        <button
+          onClick={() => setInterestsOpen((o) => !o)}
+          aria-expanded={interestsOpen}
+          className="flex w-full items-center justify-between gap-3 text-left"
+        >
+          <span className="min-w-0">
+            <span className="block font-sans text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">Interests</span>
+            <span className="mt-0.5 block truncate text-[13px] text-muted">
+              {interests.length === 0 && followedSources.size === 0
+                ? 'Nothing chosen yet'
+                : `${interests.length} ${interests.length === 1 ? 'topic' : 'topics'} · ${followedSources.size} ${followedSources.size === 1 ? 'outlet' : 'outlets'}`}
+            </span>
+          </span>
+          <span className={`shrink-0 text-muted transition-transform ${interestsOpen ? 'rotate-180' : ''}`} aria-hidden>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
+          </span>
+        </button>
+
+        {interestsOpen && (
+          <div className="pb-2 pt-5">
+            <h3 className="font-sans text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">Topics</h3>
             <p className="mt-1 text-[13px] text-muted">Tap to add or remove. Your Explore feed updates straight away.</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {CATEGORIES.filter((c) => c.id !== 'top').map((c) => {
@@ -311,7 +306,7 @@ export default function ProfilePage() {
               })}
             </div>
 
-            <h2 className="mt-7 font-sans text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">News outlets</h2>
+            <h3 className="mt-7 font-sans text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">News outlets</h3>
             <p className="mt-1 text-[13px] text-muted">Everything these publish reaches your Explore feed.</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {sources.map((s) => {
@@ -336,7 +331,7 @@ export default function ProfilePage() {
             )}
           </div>
         )}
-      </div>
+      </section>
 
       {editOpen && <EditProfileSheet onClose={() => setEditOpen(false)} />}
 
