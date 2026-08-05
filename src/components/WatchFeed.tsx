@@ -6,6 +6,7 @@ import { Story } from '@/lib/types';
 import { categoryLabel, timeAgo } from './ui';
 import EngagementBar from './EngagementBar';
 import Comments from './Comments';
+import CommentSheet from './CommentSheet';
 import { useSession } from '@/lib/session';
 
 /** Small stable hash, used to vary per-card motion without randomness on rerender. */
@@ -13,84 +14,6 @@ function hashString(s: string): number {
   let h = 0;
   for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
   return h;
-}
-
-function CommentSheet({ story, onClose }: { story: Story; onClose: () => void }) {
-  const { addComment, commentsByStory, ensureComments } = useSession();
-  useEffect(() => { ensureComments(story.id); }, [story.id, ensureComments]);
-  const [text, setText] = useState('');
-  const inputRef = useRef<HTMLInputElement>(null);
-  const comments = commentsByStory[story.id] ?? [];
-
-  const submit = () => {
-    const trimmed = text.trim();
-    if (!trimmed) return;
-    addComment(story.id, trimmed, null);
-    setText('');
-    inputRef.current?.focus();
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-end" role="dialog" aria-modal="true">
-      {/* semi-transparent backdrop — tap to close */}
-      <button className="absolute inset-0 bg-black/40" onClick={onClose} aria-label="Close comments" />
-
-      {/* sheet — 65 vh, dark, rounded top */}
-      <div className="relative flex h-[65vh] flex-col rounded-t-2xl bg-[#14152C] shadow-2xl animate-fadeUp">
-        {/* drag handle */}
-        <div className="flex justify-center pt-3 pb-1">
-          <div className="h-1 w-10 rounded-full bg-white/20" />
-        </div>
-
-        {/* header */}
-        <div className="flex items-center justify-between px-4 pb-3">
-          <span className="font-sans text-[13px] font-semibold text-white/70">
-            {comments.length > 0 ? `${comments.length} comment${comments.length !== 1 ? 's' : ''}` : 'Comments'}
-          </span>
-          <button onClick={onClose} className="text-white/50 text-lg leading-none">✕</button>
-        </div>
-
-        {/* comment list */}
-        <div className="flex-1 overflow-y-auto px-4 space-y-4">
-          {comments.length === 0 ? (
-            <p className="pt-8 text-center text-[14px] text-white/40">No comments yet. Be the first!</p>
-          ) : (
-            comments.map((c) => (
-              <div key={c.id} className="flex gap-3">
-                <div className="mt-0.5 h-7 w-7 shrink-0 rounded-full bg-white/15 flex items-center justify-center text-[11px] font-bold text-white">
-                  {(c.author?.display_name || c.author?.username || 'U').slice(0, 2).toUpperCase()}
-                </div>
-                <div>
-                  <p className="text-[13px] font-semibold text-white/80">{c.author?.display_name || c.author?.username}</p>
-                  <p className="text-[14px] text-white/90 leading-snug">{c.content}</p>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-
-        {/* input row */}
-        <div className="border-t border-white/10 px-4 py-3 flex items-center gap-3">
-          <input
-            ref={inputRef}
-            type="text"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
-            placeholder="Add a comment…"
-            className="flex-1 rounded-full border border-white/15 bg-white/8 px-4 py-2 text-[14px] text-white placeholder:text-white/35 focus:outline-none"
-          />
-          <button
-            onClick={submit}
-            disabled={!text.trim()}
-            className="rounded-full bg-white px-4 py-2 text-[13px] font-semibold text-black disabled:opacity-35"
-          >
-            Post
-          </button>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 /**
@@ -323,7 +246,7 @@ function WatchArticle({
         <Section label="What may happen next">{story.ai_what_next}</Section>
 
         <Comments story={story} dark />
-        {showCommentSheet && <CommentSheet story={story} onClose={() => setShowCommentSheet(false)} />}
+        {showCommentSheet && <CommentSheet story={story} onClose={() => setShowCommentSheet(false)} dark />}
 
         <a href={story.original_url} target="_blank" rel="noopener noreferrer"
           className="mt-7 flex items-center justify-between rounded-md border border-white/15 bg-white/5 px-4 py-3.5 font-sans text-[14px] font-medium active:bg-white/10">
@@ -714,7 +637,7 @@ export default function WatchFeed({
         ))}
       </div>
 
-      {commentStory && <CommentSheet story={commentStory} onClose={() => setCommentStory(null)} />}
+      {commentStory && <CommentSheet story={commentStory} onClose={() => setCommentStory(null)} dark />}
     </>
   );
 }

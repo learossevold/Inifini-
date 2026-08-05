@@ -9,6 +9,7 @@ import StoryCard from './StoryCard';
 import ArticleView from './ArticleView';
 import WatchFeed from './WatchFeed';
 import ShareSheet from './ShareSheet';
+import CommentSheet from './CommentSheet';
 import Logo from './Logo';
 import { categoryLabel } from './ui';
 
@@ -21,6 +22,7 @@ export default function Feed() {
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [shareStory, setShareStory] = useState<Story | null>(null);
+  const [commentStory, setCommentStory] = useState<Story | null>(null);
   const [mode, setMode] = useState<'live' | 'mock'>('mock');
   const sentinelRef = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
@@ -182,6 +184,7 @@ export default function Feed() {
       </header>
 
       {shareStory && <ShareSheet story={shareStory} onClose={() => setShareStory(null)} />}
+      {commentStory && <CommentSheet story={commentStory} onClose={() => setCommentStory(null)} />}
 
       {/* WATCH TAB */}
       {tab === 'watch' ? (
@@ -231,9 +234,9 @@ export default function Feed() {
             {stories.map((s, i) => (
               <div key={s.id} id={`story-${s.id}`} className="scroll-mt-28">
                 {expandedId === s.id ? (
-                  <ArticleView story={s} related={relatedFor(s)} onClose={() => setExpandedId(null)} onOpen={openStory} onShare={(st) => setShareStory(st)} />
+                  <ArticleView story={s} related={relatedFor(s)} onClose={() => setExpandedId(null)} onOpen={openStory} onShare={(st) => setShareStory(st)} onComment={(st) => setCommentStory(st)} />
                 ) : (
-                  <StoryCard story={s} lead={i === 0} showDemoTag={isDev} onOpen={openStory} onComment={openStory} onShare={(st) => setShareStory(st)} />
+                  <StoryCard story={s} lead={i === 0} showDemoTag={isDev} onOpen={openStory} onComment={() => setCommentStory(s)} onShare={(st) => setShareStory(st)} />
                 )}
               </div>
             ))}
