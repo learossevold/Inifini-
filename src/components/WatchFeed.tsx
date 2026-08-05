@@ -682,7 +682,20 @@ export default function WatchFeed({
               // Touch handling for the boundary-swipe live-redirect lives in
               // a useEffect above, as a real (non-passive) addEventListener
               // on this element found by id — not JSX props here.
-              <div className="h-full w-full overflow-y-auto no-scrollbar">
+              //
+              // overscroll-y-none matters specifically on real iOS Safari,
+              // invisible in every synthetic-touch test this was verified
+              // with: without it, the instant a drag passes this div's own
+              // scroll edge, iOS's native elastic rubber-band can take over
+              // the gesture with its own bounce animation before the JS
+              // threshold below ever gets a chance to arm the redirect —
+              // consuming the whole first swipe on a bounce that snaps back
+              // by itself, with the boundary-swipe only successfully arming
+              // on a second attempt once the element is back at a clean
+              // rest position. This turns that native bounce off entirely,
+              // so every pixel of the drag past the edge is this code's to
+              // read from the first swipe, not the browser's to animate.
+              <div className="h-full w-full overflow-y-auto overscroll-y-none no-scrollbar">
                 <WatchArticle story={s} onClose={close} onShare={() => onShare(s)} />
               </div>
             ) : (
