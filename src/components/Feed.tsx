@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { FeedResponse, Story, FeedTab } from '@/lib/types';
 import { useSession } from '@/lib/session';
+import { supabaseBrowser } from '@/lib/supabase';
 import StoryCard from './StoryCard';
 import ArticleView from './ArticleView';
 import WatchFeed from './WatchFeed';
@@ -31,11 +32,20 @@ export default function Feed() {
     setLoading(true); setError(null);
     try {
       const params = new URLSearchParams({ page: String(p), tab: t });
+      const headers: HeadersInit = {};
       if (t === 'following') {
         params.set('interests', interests.join(','));
         params.set('sources', Array.from(followedSources).join(','));
+        // Explore's ranking boost comes from the signed-in caller's own
+        // reading history (see /api/stories), proven by their own session
+        // token rather than a plain userId param anyone could pass in.
+        // Demo mode and signed-out reading just skip this — Explore still
+        // works on the interest/source filter alone without it.
+        const db = supabaseBrowser();
+        const token = db ? (await db.auth.getSession()).data.session?.access_token : null;
+        if (token) headers.authorization = `Bearer ${token}`;
       }
-      const res = await fetch(`/api/stories?${params}`);
+      const res = await fetch(`/api/stories?${params}`, { headers });
       if (!res.ok) throw new Error('Could not load stories');
       const data: FeedResponse = await res.json();
       setMode(data.mode);
