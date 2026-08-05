@@ -50,10 +50,11 @@ export default function Splash() {
         unoptimized
         className="w-[210px] max-w-[62%] mix-blend-multiply"
       />
+      {/* Echoes the landing page's "The world, right now." — same
+          construction, so the two read as one voice rather than two
+          unrelated taglines. */}
       <p className="animate-fadeUp mt-7 max-w-[19rem] text-center font-serif text-[16px] leading-relaxed text-ink/70">
-        Not built to keep you scrolling.
-        <br />
-        Built to help you understand the world.
+        The world, without the noise.
       </p>
     </div>
   );
