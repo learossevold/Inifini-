@@ -44,8 +44,12 @@ export async function getStoryBySlug(slug: string): Promise<Story | null> {
     try {
       const { data } = await db.from('stories').select('*').eq('slug', slug).eq('status', 'published').maybeSingle();
       if (data) return hydrate(data);
-    } catch {
-      /* fall through to demo content */
+    } catch (e: any) {
+      // Silently returning demo content here used to also silently hide *why*
+      // — a paused Supabase project and a genuine bug both looked identical
+      // from the outside. This is exactly what to grep Vercel's function logs
+      // for when the app unexpectedly falls back to demo content.
+      console.error('[stories] getStoryBySlug fell back to demo content:', e?.message ?? e, e?.code ? `(code: ${e.code})` : '');
     }
   }
   return MOCK_STORIES.find((s) => s.slug === slug) ?? null;
@@ -56,9 +60,21 @@ export async function getFeed(page: number, interests: Category[], onlyInterests
   let real: Story[] = [];
   if (db) {
     try {
-      const { data } = await db.from('stories').select('*').eq('status', 'published').not('source_domain', 'in', '("nrk.no","e24.no")').order('published_at', { ascending: false }).limit(400);
+      const { data, error } = await db.from('stories').select('*').eq('status', 'published').not('source_domain', 'in', '("nrk.no","e24.no")').order('published_at', { ascending: false }).limit(400);
+      if (error) throw error;
       real = ((data as any[]) ?? []).map(hydrate);
-    } catch { real = []; }
+      // The query can succeed with zero rows just as easily as it can throw —
+      // an empty published-stories table falls back to demo content exactly
+      // the same way a broken connection does, but it means something
+      // different (ingestion never ran / nothing passed moderation, not
+      // "database unreachable"). Worth its own log line to tell them apart.
+      if (real.length === 0) console.error('[stories] getFeed: query succeeded but found 0 published stories — falling back to demo content.');
+    } catch (e: any) {
+      console.error('[stories] getFeed fell back to demo content:', e?.message ?? e, e?.code ? `(code: ${e.code})` : '');
+      real = [];
+    }
+  } else {
+    console.error('[stories] getFeed: Supabase is not configured (NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY missing) — running on demo content.');
   }
 
   const mode: 'live' | 'mock' = real.length > 0 ? 'live' : 'mock';
