@@ -29,6 +29,8 @@ export default function Feed() {
   const [editorProfile, setEditorProfile] = useState<EditorProfile | null>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const swipeStart = useRef<{ x: number; y: number } | null>(null);
   const isDev = process.env.NODE_ENV === 'development';
 
   const loadPage = useCallback(async (p: number, t: FeedTab, replace = false) => {
@@ -95,6 +97,51 @@ export default function Feed() {
     document.documentElement.classList.add('watch-lock');
     return () => document.documentElement.classList.remove('watch-lock');
   }, [tab]);
+
+  // News/For You snap to the next story only while an article is open — see
+  // .feed-snap in globals.css for why this is `proximity`, not Watch's
+  // `mandatory`. Cleared the moment the article closes, so ordinary
+  // multi-card scrolling is completely free the rest of the time.
+  useEffect(() => {
+    if (tab === 'watch' || !expandedId) return;
+    document.documentElement.classList.add('feed-snap');
+    return () => document.documentElement.classList.remove('feed-snap');
+  }, [tab, expandedId]);
+
+  // Swipe anywhere to switch tabs. Deliberately reads only where a touch
+  // started and ended, never mid-gesture — nothing visually "drags" with the
+  // finger, and staying passive throughout means it can never steal a touch
+  // from Watch's own vertical gesture or from a normal page scroll on News/
+  // For You. A horizontal-dominant swipe past the threshold just steps to
+  // the neighbouring tab once the finger lifts.
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    const TAB_ORDER: FeedTab[] = ['watch', 'news', 'following'];
+    const onStart = (e: TouchEvent) => {
+      if (shareStory || commentStory || e.touches.length !== 1) { swipeStart.current = null; return; }
+      swipeStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    };
+    const onEnd = (e: TouchEvent) => {
+      const start = swipeStart.current;
+      swipeStart.current = null;
+      if (!start) return;
+      const end = e.changedTouches[0];
+      const dx = end.clientX - start.x;
+      const dy = end.clientY - start.y;
+      const MIN_DISTANCE = 60;
+      if (Math.abs(dx) < MIN_DISTANCE || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+      const idx = TAB_ORDER.indexOf(tab);
+      const next = dx < 0 ? idx + 1 : idx - 1;
+      if (next >= 0 && next < TAB_ORDER.length) setTab(TAB_ORDER[next]);
+    };
+    el.addEventListener('touchstart', onStart, { passive: true });
+    el.addEventListener('touchend', onEnd, { passive: true });
+    return () => {
+      el.removeEventListener('touchstart', onStart);
+      el.removeEventListener('touchend', onEnd);
+    };
+  }, [tab, shareStory, commentStory]);
 
   // Infinite scroll for News/Following (Watch handles its own)
   useEffect(() => {
@@ -178,6 +225,12 @@ export default function Feed() {
       })()
     : null;
 
+  // The two snap points for .feed-snap: the open article itself and the
+  // story right after it, so the scroll that carries you past the article
+  // settles at the top of the next one instead of somewhere mid-card.
+  const expandedIdx = expandedId ? stories.findIndex((s) => s.id === expandedId) : -1;
+  const nextSnapId = expandedIdx >= 0 && expandedIdx + 1 < stories.length ? stories[expandedIdx + 1].id : null;
+
   const TabBtn = ({ id, label }: { id: FeedTab; label: string }) => (
     <button
       onClick={() => setTab(id)}
@@ -193,7 +246,7 @@ export default function Feed() {
     /* On Watch the shell is a fixed-height flex column that clips its own
        overflow, so the feed inside it is the only thing on screen that
        scrolls. The other tabs scroll the page as normal. */
-    <div className={tab === 'watch' ? 'watch-shell flex flex-col overflow-hidden' : undefined}>
+    <div ref={rootRef} className={tab === 'watch' ? 'watch-shell flex flex-col overflow-hidden' : undefined}>
       {/* Brand mark left, the three feeds grouped in the middle. The spacer
           matches the mark's width so the group sits centred on screen rather
           than nudged right by it. */}
@@ -284,8 +337,9 @@ export default function Feed() {
               // like any other story, just without a second copy sitting in
               // the ordinary list underneath.
               if (recommendation?.story.id === s.id && expandedId !== s.id) return null;
+              const isSnapPoint = s.id === expandedId || s.id === nextSnapId;
               return (
-              <div key={s.id} id={`story-${s.id}`} className="scroll-mt-28">
+              <div key={s.id} id={`story-${s.id}`} className={`scroll-mt-28${isSnapPoint ? ' feed-snap-point' : ''}`}>
                 {expandedId === s.id ? (
                   <ArticleView story={s} related={relatedFor(s)} onClose={() => setExpandedId(null)} onOpen={openStory} onShare={(st) => setShareStory(st)} onComment={(st) => setCommentStory(st)} />
                 ) : (
