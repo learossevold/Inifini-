@@ -289,7 +289,7 @@ export default function ProfilePage() {
         {interestsOpen && (
           <div className="pb-2 pt-5">
             <h3 className="font-sans text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">Topics</h3>
-            <p className="mt-1 text-[13px] text-muted">Tap to add or remove. Your Explore feed updates straight away.</p>
+            <p className="mt-1 text-[13px] text-muted">Tap to add or remove. Your For You feed updates straight away.</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {CATEGORIES.filter((c) => c.id !== 'top').map((c) => {
                 const on = interests.includes(c.id);
@@ -307,7 +307,7 @@ export default function ProfilePage() {
             </div>
 
             <h3 className="mt-7 font-sans text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">News outlets</h3>
-            <p className="mt-1 text-[13px] text-muted">Everything these publish reaches your Explore feed.</p>
+            <p className="mt-1 text-[13px] text-muted">Everything these publish reaches your For You feed.</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {sources.map((s) => {
                 const on = followedSources.has(s.domain);
@@ -326,7 +326,7 @@ export default function ProfilePage() {
 
             {interests.length === 0 && followedSources.size === 0 && (
               <p className="mt-6 text-[13px] text-muted">
-                Nothing chosen yet, so Explore is empty. Everything still shows up under News.
+                Nothing chosen yet, so For You is empty. Everything still shows up under News.
               </p>
             )}
           </div>
