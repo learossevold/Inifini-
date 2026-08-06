@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { FeedResponse, Story, FeedTab } from '@/lib/types';
 import { EditorProfile, explainRecommendation } from '@/lib/affinity';
+import { buildGreeting, Greeting } from '@/lib/greeting';
 import { useSession } from '@/lib/session';
 import { supabaseBrowser } from '@/lib/supabase';
 import StoryCard from './StoryCard';
@@ -12,11 +13,12 @@ import WatchFeed from './WatchFeed';
 import ShareSheet from './ShareSheet';
 import CommentSheet from './CommentSheet';
 import TodaysRecommendation from './TodaysRecommendation';
+import EditorGreeting from './EditorGreeting';
 import Logo from './Logo';
 import { categoryLabel } from './ui';
 
 export default function Feed() {
-  const { interests, followedSources, recordView, loadEditorProfile } = useSession();
+  const { me, interests, followedSources, recordView, loadEditorProfile } = useSession();
   const [tab, setTab] = useState<FeedTab>('watch');
   const [stories, setStories] = useState<Story[]>([]);
   const [page, setPage] = useState(0);
@@ -27,6 +29,8 @@ export default function Feed() {
   const [commentStory, setCommentStory] = useState<Story | null>(null);
   const [mode, setMode] = useState<'live' | 'mock'>('mock');
   const [editorProfile, setEditorProfile] = useState<EditorProfile | null>(null);
+  const [profileFetched, setProfileFetched] = useState(false);
+  const [greeting, setGreeting] = useState<Greeting | null>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -80,14 +84,30 @@ export default function Feed() {
   }, [tab, loadPage, followingEmpty]);
 
   // The same signal that ranks Explore, fetched once for display: the
-  // "why this story" line on each card and the top recommendation both read
-  // from this, so what's said and what's shown can never drift apart.
+  // "why this story" line on each card, the top recommendation, and the
+  // editor's greeting below all read from this, so what's said and what's
+  // shown can never drift apart. profileFetched tracks whether the fetch has
+  // settled at all, separately from the profile itself — a signed-out or
+  // brand-new reader resolves to `null` too, and the greeting needs to tell
+  // "not personalised yet" apart from "hasn't loaded yet" to avoid freezing
+  // on the generic line before real personalisation had a chance to arrive.
   useEffect(() => {
-    if (tab !== 'following') return;
+    if (tab !== 'following') { setProfileFetched(false); return; }
     let cancelled = false;
-    loadEditorProfile().then((p) => { if (!cancelled) setEditorProfile(p); });
+    setProfileFetched(false);
+    loadEditorProfile().then((p) => { if (!cancelled) { setEditorProfile(p); setProfileFetched(true); } });
     return () => { cancelled = true; };
   }, [tab, loadEditorProfile]);
+
+  // The editor's opening line for this visit to the tab — built once
+  // per open, from whichever profile/stories have finished loading by then,
+  // and left alone after that so it doesn't reshuffle mid-scroll as
+  // infinite-scroll appends more stories behind it.
+  useEffect(() => {
+    if (tab !== 'following') { setGreeting(null); return; }
+    if (loading || stories.length === 0 || !profileFetched) return;
+    setGreeting((g) => g ?? buildGreeting({ name: me?.display_name ?? null, profile: editorProfile, stories }));
+  }, [tab, loading, stories, editorProfile, profileFetched, me]);
 
   // Watch is a full-screen feed: switch the document scroller off while it is
   // open so a flick can only move the feed. Two scrollers is what made a swipe
@@ -291,9 +311,14 @@ export default function Feed() {
             </div>
           ) : (
           <>
-          {/* The editor's single pick comes first — before even the
-              interests summary line — since it's the one thing on this tab
-              meant to feel chosen rather than filtered. */}
+          {/* The editor's opening line for this visit, ahead of even the
+              single pick below — meeting the reader at the top of the tab,
+              not another list item. */}
+          {tab === 'following' && greeting && <EditorGreeting greeting={greeting} />}
+
+          {/* The editor's single pick comes next — before the interests
+              summary line — since it's the one thing on this tab meant to
+              feel chosen rather than filtered. */}
           {recommendation && expandedId !== recommendation.story.id && (
             <div className="pt-6">
               <TodaysRecommendation

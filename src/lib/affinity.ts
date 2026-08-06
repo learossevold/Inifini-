@@ -167,6 +167,17 @@ export async function getEditorProfile(db: SupabaseClient, userId: string): Prom
  * matches a followed topic/source at the default weight, with no real
  * behavioural signal behind it, gets no manufactured explanation.
  */
+/**
+ * Most category labels (Technology, Science, Sport, ...) are common nouns and
+ * read naturally lowercased mid-sentence. "Norway" and "AI" aren't — a proper
+ * noun and an acronym stay exactly as labelled, or "you read about norway"
+ * reads like a typo and "you read about ai" loses the acronym entirely.
+ */
+export function categoryPhrase(id: Category, label: string): string {
+  const KEEP_CASE: Category[] = ['norway', 'ai'];
+  return KEEP_CASE.includes(id) ? label : label.toLowerCase();
+}
+
 export function explainRecommendation(story: Story, profile: EditorProfile): string | null {
   const category = profile.categories.find((c) => c.id === story.category);
   const source = profile.sources.find((s) => s.domain === story.source_domain);
@@ -182,13 +193,7 @@ export function explainRecommendation(story: Story, profile: EditorProfile): str
   if (strongest.score < MIN_SCORE) return null;
 
   if (strongest === category) {
-    // Most category labels (Technology, Science, Sport, ...) are common
-    // nouns and read naturally lowercased mid-sentence. "Norway" and "AI"
-    // aren't — a proper noun and an acronym stay exactly as labelled, or
-    // "you read about norway" reads like a typo and "you read about ai"
-    // loses the acronym entirely.
-    const KEEP_CASE: Category[] = ['norway', 'ai'];
-    const label = KEEP_CASE.includes(category!.id) ? category!.label : category!.label.toLowerCase();
+    const label = categoryPhrase(category!.id, category!.label);
     return category!.score >= 70
       ? `Recommended because you often read about ${label}.`
       : `Recommended because you've shown interest in ${label}.`;
