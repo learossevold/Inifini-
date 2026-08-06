@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { FeedResponse, Story, FeedTab } from '@/lib/types';
+import { EditorProfile, explainRecommendation } from '@/lib/affinity';
 import { useSession } from '@/lib/session';
 import { supabaseBrowser } from '@/lib/supabase';
 import StoryCard from './StoryCard';
@@ -10,11 +11,12 @@ import ArticleView from './ArticleView';
 import WatchFeed from './WatchFeed';
 import ShareSheet from './ShareSheet';
 import CommentSheet from './CommentSheet';
+import TodaysRecommendation from './TodaysRecommendation';
 import Logo from './Logo';
 import { categoryLabel } from './ui';
 
 export default function Feed() {
-  const { interests, followedSources, recordView } = useSession();
+  const { interests, followedSources, recordView, loadEditorProfile } = useSession();
   const [tab, setTab] = useState<FeedTab>('watch');
   const [stories, setStories] = useState<Story[]>([]);
   const [page, setPage] = useState(0);
@@ -24,6 +26,7 @@ export default function Feed() {
   const [shareStory, setShareStory] = useState<Story | null>(null);
   const [commentStory, setCommentStory] = useState<Story | null>(null);
   const [mode, setMode] = useState<'live' | 'mock'>('mock');
+  const [editorProfile, setEditorProfile] = useState<EditorProfile | null>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
   const isDev = process.env.NODE_ENV === 'development';
@@ -73,6 +76,16 @@ export default function Feed() {
     if (followingEmpty) { setLoading(false); return; }
     loadPage(0, tab, true);
   }, [tab, loadPage, followingEmpty]);
+
+  // The same signal that ranks Explore, fetched once for display: the
+  // "why this story" line on each card and the top recommendation both read
+  // from this, so what's said and what's shown can never drift apart.
+  useEffect(() => {
+    if (tab !== 'following') return;
+    let cancelled = false;
+    loadEditorProfile().then((p) => { if (!cancelled) setEditorProfile(p); });
+    return () => { cancelled = true; };
+  }, [tab, loadEditorProfile]);
 
   // Watch is a full-screen feed: switch the document scroller off while it is
   // open so a flick can only move the feed. Two scrollers is what made a swipe
@@ -148,6 +161,23 @@ export default function Feed() {
 
   const relatedFor = useCallback((s: Story) => stories.filter((x) => x.id !== s.id && (x.category === s.category || x.region === s.region)).slice(0, 3), [stories]);
 
+  const reasonFor = useCallback((s: Story) => (editorProfile ? explainRecommendation(s, editorProfile) : null), [editorProfile]);
+
+  // The editor's one pick, not a second list: always the single top-ranked
+  // Explore story specifically — index 0 stays the original first page's
+  // top story even once infinite scroll appends more behind it, so this
+  // doesn't re-nominate a new pick as later pages load in. It only shows up
+  // at all when there's an honest reason to give (see explainRecommendation)
+  // — no reason means no manufactured pick. The list below skips rendering
+  // its collapsed card a second time, keeping this the single source for it.
+  const recommendation = tab === 'following' && stories.length > 0
+    ? (() => {
+        const top = stories[0];
+        const reason = reasonFor(top);
+        return reason ? { story: top, reason } : null;
+      })()
+    : null;
+
   const TabBtn = ({ id, label }: { id: FeedTab; label: string }) => (
     <button
       onClick={() => setTab(id)}
@@ -208,6 +238,22 @@ export default function Feed() {
             </div>
           ) : (
           <>
+          {/* The editor's single pick comes first — before even the
+              interests summary line — since it's the one thing on this tab
+              meant to feel chosen rather than filtered. */}
+          {recommendation && expandedId !== recommendation.story.id && (
+            <div className="pt-6">
+              <TodaysRecommendation
+                story={recommendation.story}
+                reason={recommendation.reason}
+                showDemoTag={isDev}
+                onOpen={openStory}
+                onComment={() => setCommentStory(recommendation.story)}
+                onShare={(st) => setShareStory(st)}
+              />
+            </div>
+          )}
+
           {tab === 'following' && (interests.length > 0 || followedSources.size > 0) && (
             <p className="pt-3 text-[12px] text-muted">
               Following: {[...interests.map(categoryLabel), ...Array.from(followedSources)].join(' · ')} · <Link href="/profile" className="underline">Edit</Link>
@@ -231,15 +277,23 @@ export default function Feed() {
           )}
 
           <div className="space-y-9 pt-6">
-            {stories.map((s, i) => (
+            {stories.map((s, i) => {
+              // Already shown above as the editor's pick — its collapsed
+              // card doesn't also render here, only its expanded view does,
+              // so opening it from the recommendation still works exactly
+              // like any other story, just without a second copy sitting in
+              // the ordinary list underneath.
+              if (recommendation?.story.id === s.id && expandedId !== s.id) return null;
+              return (
               <div key={s.id} id={`story-${s.id}`} className="scroll-mt-28">
                 {expandedId === s.id ? (
                   <ArticleView story={s} related={relatedFor(s)} onClose={() => setExpandedId(null)} onOpen={openStory} onShare={(st) => setShareStory(st)} onComment={(st) => setCommentStory(st)} />
                 ) : (
-                  <StoryCard story={s} lead={i === 0} showDemoTag={isDev} onOpen={openStory} onComment={() => setCommentStory(s)} onShare={(st) => setShareStory(st)} />
+                  <StoryCard story={s} lead={i === 0} showDemoTag={isDev} reason={tab === 'following' ? reasonFor(s) : null} onOpen={openStory} onComment={() => setCommentStory(s)} onShare={(st) => setShareStory(st)} />
                 )}
               </div>
-            ))}
+              );
+            })}
           </div>
 
           {loading && (

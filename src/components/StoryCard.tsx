@@ -8,11 +8,13 @@ import { ImportanceMarker, categoryLabel, timeAgo } from './ui';
 import EngagementBar from './EngagementBar';
 
 export default function StoryCard({
-  story, lead = false, showDemoTag = false, onOpen, onComment, onShare,
+  story, lead = false, showDemoTag = false, reason, onOpen, onComment, onShare,
 }: {
   story: Story;
   lead?: boolean;
   showDemoTag?: boolean;
+  /** Explore only: why this story is ranked here, in the reader's own terms. */
+  reason?: string | null;
   onOpen: (s: Story) => void;
   onComment: (s: Story) => void;
   onShare: (s: Story) => void;
@@ -49,6 +51,9 @@ export default function StoryCard({
         <p className="mt-2.5 text-[12px] font-sans text-muted">
           {story.source_name} · {timeAgo(story.published_at)} · {readingTimeMinutes(story)} min read
         </p>
+        {/* Explore's whole point over a black-box algorithm: say why,
+            in the reader's own terms, not just rank it silently. */}
+        {reason && <p className="mt-1.5 text-[12px] font-sans text-accent">{reason}</p>}
       </button>
 
       <div className="mt-3">

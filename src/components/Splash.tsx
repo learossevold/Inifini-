@@ -20,13 +20,27 @@ import { usePathname } from 'next/navigation';
  */
 export default function Splash() {
   const pathname = usePathname();
+  // Starts at 0 opacity and fades up to full on mount, rather than simply
+  // appearing — a calm entrance reads as considered, an instant pop-in
+  // reads as a loading flash.
+  const [visible, setVisible] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [gone, setGone] = useState(false);
 
   useEffect(() => {
+    // Two nested frames, not one: flipping the opacity state inside the
+    // same frame the component first paints in can get coalesced by the
+    // browser into a single frame with no visible transition at all — the
+    // first rAF just waits for that initial opacity-0 paint to land, the
+    // second (guaranteed to run on a later frame) is what actually starts
+    // the fade.
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setVisible(true));
+    });
     const hold = setTimeout(() => setLeaving(true), 1900);
     const remove = setTimeout(() => setGone(true), 2400);
-    return () => { clearTimeout(hold); clearTimeout(remove); };
+    return () => { cancelAnimationFrame(raf1); cancelAnimationFrame(raf2); clearTimeout(hold); clearTimeout(remove); };
   }, []);
 
   // The marketing page is its own front door and already says all of this.
@@ -36,7 +50,9 @@ export default function Splash() {
     <div
       aria-hidden
       onClick={() => setLeaving(true)}
-      className={`fixed inset-0 z-[100] flex flex-col items-center justify-center bg-paper px-8 transition-opacity duration-500 ${leaving ? 'pointer-events-none opacity-0' : 'opacity-100'}`}
+      className={`fixed inset-0 z-[100] flex flex-col items-center justify-center bg-paper px-8 transition-opacity duration-[420ms] ${
+        leaving ? 'pointer-events-none opacity-0 duration-500' : visible ? 'opacity-100' : 'opacity-0'
+      }`}
     >
       {/* The wordmark art is drawn on white. multiply blending drops that
           white into the paper background instead of sitting on it as a
@@ -53,7 +69,7 @@ export default function Splash() {
       {/* Echoes the landing page's "The world, right now." — same
           construction, so the two read as one voice rather than two
           unrelated taglines. */}
-      <p className="animate-fadeUp mt-7 max-w-[19rem] text-center font-serif text-[16px] leading-relaxed text-ink/70">
+      <p className="mt-7 max-w-[19rem] text-center font-serif text-[16px] leading-relaxed text-ink/70">
         The world, without the noise.
       </p>
     </div>

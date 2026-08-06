@@ -1,6 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { RSS_SOURCES } from '@/config/sources';
-import { CATEGORIES, Category } from './types';
+import { CATEGORIES, Category, Story } from './types';
 
 export interface Affinity {
   categories: Partial<Record<Category, number>>;
@@ -153,6 +153,47 @@ export async function getEditorProfile(db: SupabaseClient, userId: string): Prom
     totalSignals,
     deliberateSignals,
   };
+}
+
+/**
+ * A one-line reason a given story is showing up in Explore, in the reader's
+ * own terms — "recommended because you read a lot about AI", not "algorithm
+ * score 0.83". This is a template filled from the same numbers the ranking
+ * boost already uses, not a separate AI-written sentence: there's no
+ * per-view generation cost, and it can never claim something the profile
+ * doesn't actually show, because it's built from the identical data.
+ *
+ * Returns null when there's nothing honest to say — a story that only
+ * matches a followed topic/source at the default weight, with no real
+ * behavioural signal behind it, gets no manufactured explanation.
+ */
+export function explainRecommendation(story: Story, profile: EditorProfile): string | null {
+  const category = profile.categories.find((c) => c.id === story.category);
+  const source = profile.sources.find((s) => s.domain === story.source_domain);
+
+  // Prefer whichever signal is actually stronger, category or source, so
+  // the explanation always names the more accurate reason. A tie goes to
+  // category — "you read about X" says more than "you trust Y" when both
+  // are equally true.
+  const strongest = [category, source].filter(Boolean).sort((a, b) => (b?.score ?? 0) - (a?.score ?? 0))[0];
+  if (!strongest) return null;
+
+  const MIN_SCORE = 35; // below this, the signal is too thin to state as a reason with any confidence
+  if (strongest.score < MIN_SCORE) return null;
+
+  if (strongest === category) {
+    // Most category labels (Technology, Science, Sport, ...) are common
+    // nouns and read naturally lowercased mid-sentence. "Norway" and "AI"
+    // aren't — a proper noun and an acronym stay exactly as labelled, or
+    // "you read about norway" reads like a typo and "you read about ai"
+    // loses the acronym entirely.
+    const KEEP_CASE: Category[] = ['norway', 'ai'];
+    const label = KEEP_CASE.includes(category!.id) ? category!.label : category!.label.toLowerCase();
+    return category!.score >= 70
+      ? `Recommended because you often read about ${label}.`
+      : `Recommended because you've shown interest in ${label}.`;
+  }
+  return `Recommended because you tend to trust ${source!.name}.`;
 }
 
 /**
