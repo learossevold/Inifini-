@@ -276,6 +276,9 @@ export default function WatchFeed({
   const lastTouchY = useRef(0);
   const redirectingRef = useRef(false);
   const velocitySamples = useRef<{ t: number; y: number }[]>([]);
+  // The article's own scrollTop, as last observed on a touchmove — see the
+  // boundary check in onTouchMove below for why this exists.
+  const lastScrollElTop = useRef(0);
   // True from the moment a boundary drag starts redirecting the outer
   // container through to the moment its coast+settle animation decides the
   // outcome. While true, the auto-close observer below defers to it — see
@@ -455,6 +458,7 @@ export default function WatchFeed({
       lastTouchY.current = e.touches[0].clientY;
       redirectingRef.current = false;
       redirectActiveRef.current = false;
+      lastScrollElTop.current = scrollEl.scrollTop;
       velocitySamples.current = [{ t: performance.now(), y: e.touches[0].clientY }];
     };
 
@@ -477,10 +481,42 @@ export default function WatchFeed({
         // jitter that shouldn't arm it on its own (e.g. during a tap).
         const THRESHOLD = 4;
         if (Math.abs(startY - y) < THRESHOLD) { lastTouchY.current = y; return; }
-        const atBottom = scrollEl.scrollTop + scrollEl.clientHeight >= scrollEl.scrollHeight - 2;
-        const atTop = scrollEl.scrollTop <= 0;
+
+        // Not a plain "is scrollTop already sitting exactly at its max"
+        // check. That worked for every synthetic test, which all start the
+        // gesture already resting at the boundary — but a real read (start
+        // at the top, drag continuously through the whole article and past
+        // its own edge in one motion) never got as far as arming at all,
+        // reproduced directly by driving the same drag through Chromium's
+        // real touch-input pipeline (CDP), not just dispatched DOM events.
+        // scrollTop is a synchronous DOM read and shouldn't lag by spec,
+        // but native touch scrolling on iOS is known to run its position
+        // updates off the main thread for performance, and a synchronous
+        // read from inside a touchmove handler can observe a value a frame
+        // or so behind the true visual position — worst right as a fast
+        // drag reaches the end, exactly the moment this needs to be right.
+        //
+        // So the edge itself is checked with a forgiving margin instead of
+        // exact equality, and combined with a second, purely behavioural
+        // signal: the finger is still visibly dragging in this direction,
+        // but the article stopped moving in response. That second signal
+        // alone would be too eager — a natural pause mid-scroll looks
+        // identical for one frame — so it only counts alongside actually
+        // being near the edge, never on its own.
+        const currentScrollElTop = scrollEl.scrollTop;
+        const scrollElDelta = currentScrollElTop - lastScrollElTop.current;
+        const fingerDelta = lastTouchY.current - y; // px since the last check; positive = dragging up = wants more content below
+        lastScrollElTop.current = currentScrollElTop;
+
+        const EDGE_MARGIN = 24; // forgiving on purpose — see above
+        const nearBottom = currentScrollElTop + scrollEl.clientHeight >= scrollEl.scrollHeight - EDGE_MARGIN;
+        const nearTop = currentScrollElTop <= EDGE_MARGIN;
+        const stillDragging = Math.abs(fingerDelta) > 0.5;
+        const notResponding = Math.abs(scrollElDelta) < 0.5;
         const goingDown = startY - y > 0;
-        if (!((goingDown && atBottom) || (!goingDown && atTop))) { lastTouchY.current = y; return; }
+        const atBottom = nearBottom && goingDown && stillDragging && notResponding;
+        const atTop = nearTop && !goingDown && stillDragging && notResponding;
+        if (!(atBottom || atTop)) { lastTouchY.current = y; return; }
         redirectingRef.current = true; // falls through to the redirect branch below for this same event
         redirectActiveRef.current = true; // see the ref's declaration for why
         const container = containerRef.current;
