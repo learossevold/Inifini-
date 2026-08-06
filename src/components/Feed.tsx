@@ -206,8 +206,8 @@ export default function Feed() {
             <TabBtn id="watch" label="Watch" />
             <TabBtn id="news" label="News" />
             {/* Internally still the "following" feed. Nobody follows *people*,
-                so it reads as Explore: your interests plus the outlets you picked. */}
-            <TabBtn id="following" label="Explore" />
+                so it reads as For You: your interests plus the outlets you picked. */}
+            <TabBtn id="following" label="For You" />
           </nav>
           <span className="w-[30px] shrink-0" aria-hidden />
         </div>

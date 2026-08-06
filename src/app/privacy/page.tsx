@@ -36,7 +36,7 @@ export default function PrivacyPage() {
 
       <Section title="Reading without an account">
         <p>
-          You can browse Watch, News and Explore without signing up. In that state we store nothing about
+          You can browse Watch, News and For You without signing up. In that state we store nothing about
           you personally. Our hosting provider keeps ordinary server logs (IP address, browser type, pages
           requested) for security and troubleshooting, as any website does.
         </p>
@@ -47,7 +47,7 @@ export default function PrivacyPage() {
         <ul className="ml-4 list-disc space-y-1.5">
           <li>Your email address, used only to sign you in.</li>
           <li>Your username and display name, which other users can see.</li>
-          <li>The topics and news outlets you follow, to build your Explore feed.</li>
+          <li>The topics and news outlets you follow, to build your For You feed.</li>
           <li>Stories you save and like, and any collections you sort them into.</li>
           <li>Which stories you have opened, used only to show you your own reading summary. It is never shown to anyone else and never pooled with other readers.</li>
           <li>Comments you post, which are public to other users.</li>
