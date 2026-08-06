@@ -48,14 +48,14 @@ function personalizedMessage(profile: EditorProfile | null, stories: Story[]): s
     const match = stories.filter((s) => s.category === category.id).sort((a, b) => b.importance_score - a.importance_score)[0];
     if (match) {
       const label = categoryPhrase(category.id, category.label);
-      return `You've been reading a lot about ${label} lately — I've made sure today includes the latest on it.`;
+      return `You've been reading a lot about ${label} lately. I've made sure today includes the latest on it.`;
     }
   }
 
   const source = profile.sources[0];
   if (source && source.score >= STRONG_SIGNAL) {
     const match = stories.find((s) => s.source_domain === source.domain);
-    if (match) return `You tend to trust ${source.name} — one of today's top stories comes from them.`;
+    if (match) return `You tend to trust ${source.name}. One of today's top stories comes from them.`;
   }
 
   return null;
