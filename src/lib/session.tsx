@@ -193,7 +193,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       email,
       options: { emailRedirectTo: typeof window !== 'undefined' ? window.location.origin : undefined },
     });
-    return error ? { error: error.message } : {};
+    if (!error) return {};
+    // A genuine network failure — the request never even reached the
+    // server — surfaces as the browser's own generic fetch error text:
+    // "Load failed" on Safari/iOS, "Failed to fetch" on Chrome. That reads
+    // as gibberish to someone just trying to sign in, and almost always
+    // means the backend itself is unreachable (a paused database is the
+    // usual culprit here) rather than anything wrong with what they typed,
+    // so say that instead of passing the raw browser string straight through.
+    if (/load failed|failed to fetch|network ?error|network request failed/i.test(error.message)) {
+      return { error: 'Could not reach the server. Check your connection and try again — if it keeps happening, the service may be temporarily down.' };
+    }
+    return { error: error.message };
   }, []);
 
   const signOut = useCallback(async () => {
