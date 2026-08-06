@@ -38,13 +38,15 @@ const config: Config = {
         pulseDot: { '0%,100%': { opacity: '1' }, '50%': { opacity: '0.3' } },
         fadeUp: { from: { opacity: '0', transform: 'translateY(8px)' }, to: { opacity: '1', transform: 'translateY(0)' } },
         // Held well above 1 throughout, so the subject fills the frame like a
-        // shot rather than sitting inside the whole photo. The travel is kept
-        // narrow (about a tenth of the frame over three quarters of a minute)
-        // so the image breathes rather than zooms.
-        kenburns1: { from: { transform: 'scale(1.16) translate(0, 0)' }, to: { transform: 'scale(1.26) translate(-2%, -2%)' } },
-        kenburns2: { from: { transform: 'scale(1.26) translate(1.5%, 1.5%)' }, to: { transform: 'scale(1.16) translate(0, 0)' } },
-        kenburns3: { from: { transform: 'scale(1.18) translate(-2%, 1%)' }, to: { transform: 'scale(1.28) translate(2%, -1.5%)' } },
-        kenburns4: { from: { transform: 'scale(1.17) translate(0, 2%)' }, to: { transform: 'scale(1.27) translate(0, -2%)' } },
+        // shot rather than sitting inside the whole photo. Widened from
+        // about a tenth of the frame to about a sixth — enough to actually
+        // read as a deliberate push in, not just a breathing wobble — while
+        // the duration (see the animation block above) stays untouched, so
+        // it's still a slow, uncatchable drift rather than a visible zoom.
+        kenburns1: { from: { transform: 'scale(1.16) translate(0, 0)' }, to: { transform: 'scale(1.32) translate(-2%, -2%)' } },
+        kenburns2: { from: { transform: 'scale(1.32) translate(1.5%, 1.5%)' }, to: { transform: 'scale(1.16) translate(0, 0)' } },
+        kenburns3: { from: { transform: 'scale(1.18) translate(-2%, 1%)' }, to: { transform: 'scale(1.34) translate(2%, -1.5%)' } },
+        kenburns4: { from: { transform: 'scale(1.17) translate(0, 2%)' }, to: { transform: 'scale(1.33) translate(0, -2%)' } },
       },
     },
   },
