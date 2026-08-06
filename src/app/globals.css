@@ -55,6 +55,17 @@ html.watch-lock .app-shell {
 .snap-y-screen { scroll-snap-type: y mandatory; }
 .snap-screen { scroll-snap-align: start; scroll-snap-stop: always; }
 
+/* News/For You snap only while an article is open, and only with `proximity`
+   rather than Watch's `mandatory` — proximity pulls the scroll into place
+   solely when it's already near a snap point, so scrolling freely inside a
+   long open article is never yanked back, the trap `mandatory` set on Watch's
+   tall cards. Feed toggles .feed-snap on html for exactly as long as an
+   article is expanded, and marks just two elements as snap points: the open
+   article and the story right after it, so scrolling past the open one settles
+   cleanly at the top of the next, then ordinary multi-card scrolling resumes. */
+html.feed-snap { scroll-snap-type: y proximity; }
+.feed-snap-point { scroll-snap-align: start; }
+
 /* Coming-soon ticker: the strip's content is duplicated once in the markup,
    and this slides it exactly one copy's width to the left before looping, so
    the seam between the end of one copy and the start of the next is invisible. */
