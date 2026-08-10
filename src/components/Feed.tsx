@@ -17,6 +17,8 @@ import EditorGreeting from './EditorGreeting';
 import Logo from './Logo';
 import { categoryLabel } from './ui';
 
+const TAB_ORDER: FeedTab[] = ['watch', 'news', 'following'];
+
 export default function Feed() {
   const { me, interests, followedSources, recordView, loadEditorProfile } = useSession();
   const [tab, setTab] = useState<FeedTab>('watch');
@@ -31,6 +33,7 @@ export default function Feed() {
   const [editorProfile, setEditorProfile] = useState<EditorProfile | null>(null);
   const [profileFetched, setProfileFetched] = useState(false);
   const [greeting, setGreeting] = useState<Greeting | null>(null);
+  const [transitionDirection, setTransitionDirection] = useState<'forward' | 'backward'>('forward');
   const sentinelRef = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -128,16 +131,26 @@ export default function Feed() {
     return () => document.documentElement.classList.remove('feed-snap');
   }, [tab, expandedId]);
 
+  // Switches tabs and records which way, so the content area can play a
+  // slide+fade that matches — right-to-left for moving forward through
+  // Watch → News → For You, the reverse going back. Kept separate from the
+  // swipe gesture below so tapping a tab button gets the same soft
+  // transition as swiping does.
+  const goToTab = useCallback((next: FeedTab) => {
+    setTransitionDirection(TAB_ORDER.indexOf(next) > TAB_ORDER.indexOf(tab) ? 'forward' : 'backward');
+    setTab(next);
+  }, [tab]);
+
   // Swipe anywhere to switch tabs. Deliberately reads only where a touch
   // started and ended, never mid-gesture — nothing visually "drags" with the
   // finger, and staying passive throughout means it can never steal a touch
   // from Watch's own vertical gesture or from a normal page scroll on News/
   // For You. A horizontal-dominant swipe past the threshold just steps to
-  // the neighbouring tab once the finger lifts.
+  // the neighbouring tab once the finger lifts, with the same soft
+  // transition a tab-button tap gets.
   useEffect(() => {
     const el = rootRef.current;
     if (!el) return;
-    const TAB_ORDER: FeedTab[] = ['watch', 'news', 'following'];
     const onStart = (e: TouchEvent) => {
       if (shareStory || commentStory || e.touches.length !== 1) { swipeStart.current = null; return; }
       swipeStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
@@ -153,7 +166,7 @@ export default function Feed() {
       if (Math.abs(dx) < MIN_DISTANCE || Math.abs(dx) < Math.abs(dy) * 1.5) return;
       const idx = TAB_ORDER.indexOf(tab);
       const next = dx < 0 ? idx + 1 : idx - 1;
-      if (next >= 0 && next < TAB_ORDER.length) setTab(TAB_ORDER[next]);
+      if (next >= 0 && next < TAB_ORDER.length) goToTab(TAB_ORDER[next]);
     };
     el.addEventListener('touchstart', onStart, { passive: true });
     el.addEventListener('touchend', onEnd, { passive: true });
@@ -161,7 +174,7 @@ export default function Feed() {
       el.removeEventListener('touchstart', onStart);
       el.removeEventListener('touchend', onEnd);
     };
-  }, [tab, shareStory, commentStory]);
+  }, [tab, shareStory, commentStory, goToTab]);
 
   // Infinite scroll for News/Following (Watch handles its own)
   useEffect(() => {
@@ -253,7 +266,7 @@ export default function Feed() {
 
   const TabBtn = ({ id, label }: { id: FeedTab; label: string }) => (
     <button
-      onClick={() => setTab(id)}
+      onClick={() => goToTab(id)}
       aria-current={tab === id ? 'page' : undefined}
       className={`relative py-3.5 font-sans text-[16px] ${tab === id ? 'font-semibold text-ink' : 'text-muted'}`}
     >
@@ -292,8 +305,11 @@ export default function Feed() {
       {/* WATCH TAB */}
       {tab === 'watch' ? (
         /* min-h-0 lets this shrink to the space the header leaves, instead of
-           being floored at its content height and pushing the feed off-screen. */
-        <div className="min-h-0 flex-1">
+           being floored at its content height and pushing the feed off-screen.
+           key={tab} plus the direction class replays a short slide+fade on
+           every switch — see the two tab-enter-* rules in globals.css — so a
+           swipe or a tab tap settles in gently instead of hard-cutting. */
+        <div key={tab} className={`min-h-0 flex-1 ${transitionDirection === 'forward' ? 'tab-enter-forward' : 'tab-enter-backward'}`}>
           {loading && stories.length === 0 ? (
             <div className="flex h-full items-center justify-center text-muted">Loading…</div>
           ) : (
@@ -302,7 +318,7 @@ export default function Feed() {
         </div>
       ) : (
         /* NEWS / FOLLOWING TABS */
-        <main className="px-4">
+        <main key={tab} className={`px-4 ${transitionDirection === 'forward' ? 'tab-enter-forward' : 'tab-enter-backward'}`}>
           {followingEmpty ? (
             <div className="mt-20 text-center">
               <p className="font-serif text-2xl font-semibold">Pick what you&rsquo;re into.</p>
