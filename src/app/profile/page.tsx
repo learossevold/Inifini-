@@ -8,6 +8,7 @@ import { useSession } from '@/lib/session';
 import { RSS_SOURCES } from '@/config/sources';
 import { Avatar, categoryLabel, timeAgo } from '@/components/ui';
 import NotificationToggle from '@/components/NotificationToggle';
+import NewsModeToggle from '@/components/NewsModeToggle';
 import AccountSettings from '@/components/AccountSettings';
 import EditProfileSheet from '@/components/EditProfileSheet';
 import AIEditorPanel from '@/components/AIEditorPanel';
@@ -343,6 +344,7 @@ export default function ProfilePage() {
             <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-rule" />
             <h2 className="font-serif text-[20px] font-bold">Settings</h2>
 
+            <NewsModeToggle />
             <NotificationToggle />
 
             <nav className="mt-6 rule-t pt-4 text-[14.5px]">

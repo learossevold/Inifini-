@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, useCallback, useRef, ReactNode } from 'react';
-import { Category, Collection, Comment, Conversation, Message, Profile, ReadingSummary, Story } from '@/lib/types';
+import { Category, Collection, Comment, Conversation, Message, NewsMode, Profile, ReadingSummary, Story } from '@/lib/types';
 import {
   MOCK_ME, MOCK_FRIENDS, MOCK_FRIEND_REQUESTS, MOCK_COMMENTS, MOCK_USERS,
   MOCK_CONVERSATIONS, MOCK_THREADS, MOCK_STORIES,
@@ -28,6 +28,8 @@ interface SessionState {
   me: Profile | null;
   onboarded: boolean;
   interests: Category[];
+  /** Whether the news tab is Watch (see it) or News (read it) — see NewsMode. */
+  newsMode: NewsMode;
   followedSources: Set<string>;
   saves: Set<string>;
   likes: Set<string>;
@@ -52,6 +54,7 @@ interface SessionAPI extends SessionState {
   completeOnboarding: (username: string, interests: Category[]) => Promise<{ error?: string }>;
   updateProfile: (patch: { displayName?: string; avatarFile?: File | null }) => Promise<{ error?: string }>;
   setInterests: (c: Category[]) => void;
+  setNewsMode: (m: NewsMode) => void;
   toggleSource: (domain: string) => void;
   toggleSave: (storyId: string) => void;
   toggleLike: (storyId: string) => void;
@@ -94,6 +97,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>(configured ? 'loading' : 'ready');
   const [onboarded, setOnboarded] = useState(!configured);
   const [interests, setInterestsState] = useState<Category[]>(['norway', 'world', 'ai', 'local']);
+  // Deliberately a device preference rather than a profile column: it's about
+  // how you like to take the news on the thing in your hand, and it has to
+  // work signed-out too. Always starts at the default so the server and the
+  // first client render agree, then the stored choice is applied on mount.
+  const [newsMode, setNewsModeState] = useState<NewsMode>('watch');
   const [followedSources, setFollowedSources] = useState<Set<string>>(new Set());
   const [saves, setSaves] = useState<Set<string>>(new Set());
   const [likes, setLikes] = useState<Set<string>>(configured ? new Set() : new Set(['demo-2']));
@@ -263,6 +271,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     } : m));
     return {};
   }, [me, blocked]);
+
+  const NEWS_MODE_KEY = 'inifini.newsMode';
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem(NEWS_MODE_KEY);
+    if (stored === 'watch' || stored === 'news') setNewsModeState(stored);
+  }, []);
+
+  const setNewsMode = useCallback((m: NewsMode) => {
+    setNewsModeState(m);
+    window.localStorage.setItem(NEWS_MODE_KEY, m);
+  }, []);
 
   const setInterests = useCallback((c: Category[]) => {
     setInterestsState(c);
@@ -572,9 +592,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const unreadCount = conversations.reduce((n, c) => n + c.unread, 0) + friendRequests.length;
 
   const value: SessionAPI = {
-    me, onboarded, interests, followedSources, saves, likes, friends, friendRequests, conversations, commentsByStory,
+    me, onboarded, interests, newsMode, followedSources, saves, likes, friends, friendRequests, conversations, commentsByStory,
     configured, status, canAct, signInPrompt, promptSignIn, dismissSignInPrompt, unreadCount,
-    signInWithEmail, signOut, completeOnboarding, updateProfile, setInterests, toggleSource, toggleSave, toggleLike,
+    signInWithEmail, signOut, completeOnboarding, updateProfile, setInterests, setNewsMode, toggleSource, toggleSave, toggleLike,
     sendFriendRequest, acceptFriend, declineFriend, shareToFriend,
     loadStoriesByIds, collections, refreshCollections, createCollection, deleteCollection,
     collectionsForStory, setInCollection, loadCollectionStories, recordView, loadReadingSummary,

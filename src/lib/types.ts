@@ -157,6 +157,14 @@ export interface Source {
 
 export type FeedTab = 'news' | 'following' | 'watch';
 
+/**
+ * Watch and News carry the same stories — the difference is whether you'd
+ * rather *see* the news or *read* it. Showing both as separate tabs made them
+ * look like two feeds when they are one, so the reader picks a side in
+ * Settings and the app shows that one alongside For You.
+ */
+export type NewsMode = 'watch' | 'news';
+
 export interface FeedResponse {
   stories: Story[];
   breaking: Story[];

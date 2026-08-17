@@ -3,12 +3,22 @@
 @tailwind utilities;
 
 html { scroll-behavior: smooth; }
+
+/* The app owns horizontal swipes — that's how you move between the news tab and
+   For You (see Feed). Without this, the browser claims the same gesture: a
+   rightward swipe the tab switch doesn't consume falls through to Chromium's
+   overscroll history navigation, which walked the reader straight out of the
+   app and left a blank page behind (reproduced directly through the real touch
+   pipeline, swiping right while on For You). Only the x axis is turned off
+   here; y is handled per-feed. */
+html, body { overscroll-behavior-x: none; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 .rule-t { border-top: 1px solid theme('colors.rule'); }
 ::selection { background: theme('colors.accentSoft'); }
 
-/* Watch tab shell. Two things made a single flick snap only halfway:
+/* Shell for the full-screen swipe feeds (Watch and For You). Two things made a
+   single flick snap only halfway:
 
    1. The page itself could scroll as well as the feed. The header is sticky, so
       it sits in the normal flow; a viewport-sized feed underneath it pushed the
@@ -21,28 +31,28 @@ html { scroll-behavior: smooth; }
    nav, it clips its own overflow, and it lays the header and feed out with flex
    so the card height is measured rather than guessed. The vh line stays first
    as a fallback for browsers without dvh. */
-.watch-shell {
+.fullscreen-shell {
   height: calc(100vh - 3.875rem);
   height: calc(100dvh - 3.875rem);
 }
 
 /* The app wrapper pads its bottom so the fixed nav never covers the last of a
-   scrolling page. Watch doesn't want that: its shell already reserves the nav's
-   height, so the padding double-counts it and pushes the document a few pixels
-   past the viewport — which is all iOS needs to rubber-band the page as a
-   second scroller. While Watch is open the wrapper drops its padding and the
-   document scroller is switched off, leaving the feed as the only thing that
-   moves. Feed toggles .watch-lock. */
+   scrolling page. A full-screen feed doesn't want that: its shell already
+   reserves the nav's height, so the padding double-counts it and pushes the
+   document a few pixels past the viewport — which is all iOS needs to
+   rubber-band the page as a second scroller. While one is open the wrapper
+   drops its padding and the document scroller is switched off, leaving the feed
+   as the only thing that moves. Feed toggles .fullscreen-lock. */
 .app-shell {
   min-height: 100vh;
   min-height: 100dvh;
 }
-html.watch-lock,
-html.watch-lock body {
+html.fullscreen-lock,
+html.fullscreen-lock body {
   overflow: hidden;
   overscroll-behavior-y: none;
 }
-html.watch-lock .app-shell {
+html.fullscreen-lock .app-shell {
   min-height: 0;
   padding-bottom: 0;
 }
@@ -55,18 +65,18 @@ html.watch-lock .app-shell {
 .snap-y-screen { scroll-snap-type: y mandatory; }
 .snap-screen { scroll-snap-align: start; scroll-snap-stop: always; }
 
-/* News/For You snap only while an article is open, and only with `proximity`
-   rather than Watch's `mandatory` — proximity pulls the scroll into place
-   solely when it's already near a snap point, so scrolling freely inside a
-   long open article is never yanked back, the trap `mandatory` set on Watch's
-   tall cards. Feed toggles .feed-snap on html for exactly as long as an
+/* News snaps only while an article is open, and only with `proximity` rather
+   than the full-screen feeds' `mandatory` — proximity pulls the scroll into
+   place solely when it's already near a snap point, so scrolling freely inside
+   a long open article is never yanked back, the trap `mandatory` set on
+   full-screen cards. Feed toggles .feed-snap on html for exactly as long as an
    article is expanded, and marks just two elements as snap points: the open
    article and the story right after it, so scrolling past the open one settles
    cleanly at the top of the next, then ordinary multi-card scrolling resumes. */
 html.feed-snap { scroll-snap-type: y proximity; }
 .feed-snap-point { scroll-snap-align: start; }
 
-/* Tab switch (Watch/News/For You): a brief slide+fade rather than the
+/* Tab switch (Watch-or-News ↔ For You): a brief slide+fade rather than the
    previous hard cut. Direction is only known once a swipe finishes — this
    deliberately isn't a live finger-tracked drag, so the neighbouring tab
    never has to be pre-rendered mid-gesture. Feed replays this by keying the

@@ -10,18 +10,18 @@ import { supabaseBrowser } from '@/lib/supabase';
 import StoryCard from './StoryCard';
 import ArticleView from './ArticleView';
 import WatchFeed from './WatchFeed';
+import ForYouFeed from './ForYouFeed';
 import ShareSheet from './ShareSheet';
 import CommentSheet from './CommentSheet';
-import TodaysRecommendation from './TodaysRecommendation';
-import EditorGreeting from './EditorGreeting';
 import Logo from './Logo';
 import { categoryLabel } from './ui';
 
-const TAB_ORDER: FeedTab[] = ['watch', 'news', 'following'];
-
 export default function Feed() {
-  const { me, interests, followedSources, recordView, loadEditorProfile } = useSession();
-  const [tab, setTab] = useState<FeedTab>('watch');
+  const { me, interests, newsMode, followedSources, recordView, loadEditorProfile } = useSession();
+  // Watch and News are the same stories in two registers, so only the one the
+  // reader chose in Settings is ever on screen — leaving two tabs, not three.
+  const TAB_ORDER: FeedTab[] = [newsMode, 'following'];
+  const [tab, setTab] = useState<FeedTab>(newsMode);
   const [stories, setStories] = useState<Story[]>([]);
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -40,6 +40,13 @@ export default function Feed() {
   const swipeStart = useRef<{ x: number; y: number } | null>(null);
   const isDev = process.env.NODE_ENV === 'development';
 
+  // The stored preference is read on mount, after the first render — and the
+  // reader can change it while the app is open. Either way, a tab that is no
+  // longer one of the two on offer is swapped for the one that replaced it.
+  useEffect(() => {
+    setTab((t) => (t === 'following' ? t : newsMode));
+  }, [newsMode]);
+
   const loadPage = useCallback(async (p: number, t: FeedTab, replace = false) => {
     if (loadingRef.current) return;
     loadingRef.current = true;
@@ -50,10 +57,10 @@ export default function Feed() {
       if (t === 'following') {
         params.set('interests', interests.join(','));
         params.set('sources', Array.from(followedSources).join(','));
-        // Explore's ranking boost comes from the signed-in caller's own
+        // For You's ranking boost comes from the signed-in caller's own
         // reading history (see /api/stories), proven by their own session
         // token rather than a plain userId param anyone could pass in.
-        // Demo mode and signed-out reading just skip this — Explore still
+        // Demo mode and signed-out reading just skip this — For You still
         // works on the interest/source filter alone without it.
         const db = supabaseBrowser();
         const token = db ? (await db.auth.getSession()).data.session?.access_token : null;
@@ -78,22 +85,26 @@ export default function Feed() {
 
   const followingEmpty = tab === 'following' && interests.length === 0 && followedSources.size === 0;
 
+  // Watch and For You are both full-screen swipe feeds; only News is an
+  // ordinary scrolling page.
+  const fullScreen = tab !== 'news';
+
   useEffect(() => {
-    setStories([]); setExpandedId(null);
+    setStories([]); setExpandedId(null); setGreeting(null);
     window.scrollTo({ top: 0 });
-    // Following with nothing chosen shows a prompt instead of any (mock) stories.
+    // For You with nothing chosen shows a prompt instead of any (mock) stories.
     if (followingEmpty) { setLoading(false); return; }
     loadPage(0, tab, true);
   }, [tab, loadPage, followingEmpty]);
 
-  // The same signal that ranks Explore, fetched once for display: the
-  // "why this story" line on each card, the top recommendation, and the
-  // editor's greeting below all read from this, so what's said and what's
-  // shown can never drift apart. profileFetched tracks whether the fetch has
-  // settled at all, separately from the profile itself — a signed-out or
-  // brand-new reader resolves to `null` too, and the greeting needs to tell
-  // "not personalised yet" apart from "hasn't loaded yet" to avoid freezing
-  // on the generic line before real personalisation had a chance to arrive.
+  // The same signal that ranks For You, fetched once for display: the
+  // "why this story" line on each card, the editor's pick, and the greeting
+  // page all read from this, so what's said and what's shown can never drift
+  // apart. profileFetched tracks whether the fetch has settled at all,
+  // separately from the profile itself — a signed-out or brand-new reader
+  // resolves to `null` too, and the greeting needs to tell "not personalised
+  // yet" apart from "hasn't loaded yet" to avoid freezing on the generic line
+  // before real personalisation had a chance to arrive.
   useEffect(() => {
     if (tab !== 'following') { setProfileFetched(false); return; }
     let cancelled = false;
@@ -104,49 +115,51 @@ export default function Feed() {
 
   // The editor's opening line for this visit to the tab — built once
   // per open, from whichever profile/stories have finished loading by then,
-  // and left alone after that so it doesn't reshuffle mid-scroll as
-  // infinite-scroll appends more stories behind it.
+  // and left alone after that. It's the feed's first page now, so it settling
+  // late would shift every story's slot underneath it: For You waits for this
+  // before mounting at all (see below), rather than growing a page in front
+  // of the reader after they've started swiping.
   useEffect(() => {
-    if (tab !== 'following') { setGreeting(null); return; }
+    if (tab !== 'following') return;
     if (loading || stories.length === 0 || !profileFetched) return;
     setGreeting((g) => g ?? buildGreeting({ name: me?.display_name ?? null, profile: editorProfile, stories }));
   }, [tab, loading, stories, editorProfile, profileFetched, me]);
 
-  // Watch is a full-screen feed: switch the document scroller off while it is
-  // open so a flick can only move the feed. Two scrollers is what made a swipe
-  // land halfway — the page took part of it before the feed took the rest.
+  // Watch and For You are full-screen feeds: switch the document scroller off
+  // while one is open so a flick can only move the feed. Two scrollers is what
+  // made a swipe land halfway — the page took part of it before the feed took
+  // the rest.
   useEffect(() => {
-    if (tab !== 'watch') return;
-    document.documentElement.classList.add('watch-lock');
-    return () => document.documentElement.classList.remove('watch-lock');
-  }, [tab]);
+    if (!fullScreen) return;
+    document.documentElement.classList.add('fullscreen-lock');
+    return () => document.documentElement.classList.remove('fullscreen-lock');
+  }, [fullScreen]);
 
-  // News/For You snap to the next story only while an article is open — see
-  // .feed-snap in globals.css for why this is `proximity`, not Watch's
-  // `mandatory`. Cleared the moment the article closes, so ordinary
+  // News snaps to the next story only while an article is open — see
+  // .feed-snap in globals.css for why this is `proximity`, not the full-screen
+  // feeds' `mandatory`. Cleared the moment the article closes, so ordinary
   // multi-card scrolling is completely free the rest of the time.
   useEffect(() => {
-    if (tab === 'watch' || !expandedId) return;
+    if (fullScreen || !expandedId) return;
     document.documentElement.classList.add('feed-snap');
     return () => document.documentElement.classList.remove('feed-snap');
-  }, [tab, expandedId]);
+  }, [fullScreen, expandedId]);
 
   // Switches tabs and records which way, so the content area can play a
-  // slide+fade that matches — right-to-left for moving forward through
-  // Watch → News → For You, the reverse going back. Kept separate from the
-  // swipe gesture below so tapping a tab button gets the same soft
-  // transition as swiping does.
+  // slide+fade that matches — right-to-left for moving forward into For You,
+  // the reverse going back. Kept separate from the swipe gesture below so
+  // tapping a tab button gets the same soft transition as swiping does.
   const goToTab = useCallback((next: FeedTab) => {
-    setTransitionDirection(TAB_ORDER.indexOf(next) > TAB_ORDER.indexOf(tab) ? 'forward' : 'backward');
+    setTransitionDirection(next === 'following' ? 'forward' : 'backward');
     setTab(next);
-  }, [tab]);
+  }, []);
 
   // Swipe anywhere to switch tabs. Deliberately reads only where a touch
   // started and ended, never mid-gesture — nothing visually "drags" with the
   // finger, and staying passive throughout means it can never steal a touch
-  // from Watch's own vertical gesture or from a normal page scroll on News/
-  // For You. A horizontal-dominant swipe past the threshold just steps to
-  // the neighbouring tab once the finger lifts, with the same soft
+  // from a full-screen feed's own vertical gesture or from a normal page
+  // scroll on News. A horizontal-dominant swipe past the threshold just steps
+  // to the neighbouring tab once the finger lifts, with the same soft
   // transition a tab-button tap gets.
   useEffect(() => {
     const el = rootRef.current;
@@ -174,11 +187,14 @@ export default function Feed() {
       el.removeEventListener('touchstart', onStart);
       el.removeEventListener('touchend', onEnd);
     };
-  }, [tab, shareStory, commentStory, goToTab]);
+    // TAB_ORDER is derived from newsMode and rebuilt each render; depending on
+    // the array identity would reattach these listeners every time.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, newsMode, shareStory, commentStory, goToTab]);
 
-  // Infinite scroll for News/Following (Watch handles its own)
+  // Infinite scroll for News (the full-screen feeds handle their own)
   useEffect(() => {
-    if (tab === 'watch') return;
+    if (fullScreen) return;
     const el = sentinelRef.current;
     if (!el) return;
     const obs = new IntersectionObserver((entries) => {
@@ -186,7 +202,7 @@ export default function Feed() {
     }, { rootMargin: '900px' });
     obs.observe(el);
     return () => obs.disconnect();
-  }, [page, tab, error, loadPage]);
+  }, [page, tab, error, loadPage, fullScreen]);
 
   // Used for two different taps that want two different scroll behaviours: a
   // Related link at the bottom of an article jumps to a story elsewhere in
@@ -243,26 +259,13 @@ export default function Feed() {
 
   const reasonFor = useCallback((s: Story) => (editorProfile ? explainRecommendation(s, editorProfile) : null), [editorProfile]);
 
-  // The editor's one pick, not a second list: always the single top-ranked
-  // Explore story specifically — index 0 stays the original first page's
-  // top story even once infinite scroll appends more behind it, so this
-  // doesn't re-nominate a new pick as later pages load in. It only shows up
-  // at all when there's an honest reason to give (see explainRecommendation)
-  // — no reason means no manufactured pick. The list below skips rendering
-  // its collapsed card a second time, keeping this the single source for it.
-  const recommendation = tab === 'following' && stories.length > 0
-    ? (() => {
-        const top = stories[0];
-        const reason = reasonFor(top);
-        return reason ? { story: top, reason } : null;
-      })()
-    : null;
-
   // The two snap points for .feed-snap: the open article itself and the
   // story right after it, so the scroll that carries you past the article
   // settles at the top of the next one instead of somewhere mid-card.
   const expandedIdx = expandedId ? stories.findIndex((s) => s.id === expandedId) : -1;
   const nextSnapId = expandedIdx >= 0 && expandedIdx + 1 < stories.length ? stories[expandedIdx + 1].id : null;
+
+  const followingLabels = [...interests.map(categoryLabel), ...Array.from(followedSources)];
 
   const TabBtn = ({ id, label }: { id: FeedTab; label: string }) => (
     <button
@@ -275,12 +278,41 @@ export default function Feed() {
     </button>
   );
 
+  const enterClass = transitionDirection === 'forward' ? 'tab-enter-forward' : 'tab-enter-backward';
+
+  // Everything For You shows instead of the feed itself — no topics chosen,
+  // the feed failed, or it came back empty. On a full-screen tab each of these
+  // is a whole screen rather than a block at the top of a scrolling page.
+  const forYouPlaceholder = followingEmpty ? (
+    <div className="px-8 text-center">
+      <p className="font-serif text-[26px] font-semibold leading-tight">Pick what you&rsquo;re into.</p>
+      <p className="mx-auto mt-3 max-w-xs text-sm text-muted">Choose the subjects and news outlets you care about. Everything they publish gathers here.</p>
+      <Link href="/profile" className="mt-6 inline-block rounded-md bg-ink px-5 py-2.5 text-sm font-medium text-paper">Choose topics &amp; sources</Link>
+    </div>
+  ) : error && stories.length === 0 ? (
+    <div className="px-8 text-center">
+      <p className="font-serif text-[26px] font-semibold">The presses jammed.</p>
+      <p className="mt-2 text-sm text-muted">{error}. Check your connection and try again.</p>
+      <button onClick={() => loadPage(0, tab, true)} className="mt-5 rounded-md bg-ink px-5 py-2.5 text-sm font-medium text-paper">Reload</button>
+    </div>
+  ) : !loading && stories.length === 0 ? (
+    <div className="px-8 text-center">
+      <p className="font-serif text-[26px] font-semibold">Nothing here yet.</p>
+      <p className="mt-2 text-sm text-muted">Pick more topics or sources to fill this feed.</p>
+      <Link href="/profile" className="mt-5 inline-block rounded-md bg-ink px-5 py-2.5 text-sm font-medium text-paper">Edit topics &amp; sources</Link>
+    </div>
+  ) : // The greeting is page one, so nothing mounts until it's ready — see the
+  // effect that builds it for why it can't be allowed to appear late.
+  !greeting ? (
+    <p className="text-muted">Loading…</p>
+  ) : null;
+
   return (
-    /* On Watch the shell is a fixed-height flex column that clips its own
-       overflow, so the feed inside it is the only thing on screen that
-       scrolls. The other tabs scroll the page as normal. */
-    <div ref={rootRef} className={tab === 'watch' ? 'watch-shell flex flex-col overflow-hidden' : undefined}>
-      {/* Brand mark left, the three feeds grouped in the middle. The spacer
+    /* On Watch and For You the shell is a fixed-height flex column that clips
+       its own overflow, so the feed inside it is the only thing on screen that
+       scrolls. News scrolls the page as normal. */
+    <div ref={rootRef} className={fullScreen ? 'fullscreen-shell flex flex-col overflow-hidden' : undefined}>
+      {/* Brand mark left, the two feeds grouped in the middle. The spacer
           matches the mark's width so the group sits centred on screen rather
           than nudged right by it. */}
       <header className="sticky top-0 z-30 shrink-0 border-b border-rule bg-paper/95 backdrop-blur-sm">
@@ -288,9 +320,10 @@ export default function Feed() {
           <Link href="/" aria-label="Inifini home" className="shrink-0">
             <Logo size={30} />
           </Link>
-          <nav className="flex flex-1 items-center justify-center gap-7">
-            <TabBtn id="watch" label="Watch" />
-            <TabBtn id="news" label="News" />
+          <nav className="flex flex-1 items-center justify-center gap-9">
+            {/* Whichever of the two the reader chose in Settings — same
+                stories either way, seen or read. */}
+            <TabBtn id={newsMode} label={newsMode === 'watch' ? 'Watch' : 'News'} />
             {/* Internally still the "following" feed. Nobody follows *people*,
                 so it reads as For You: your interests plus the outlets you picked. */}
             <TabBtn id="following" label="For You" />
@@ -309,51 +342,34 @@ export default function Feed() {
            key={tab} plus the direction class replays a short slide+fade on
            every switch — see the two tab-enter-* rules in globals.css — so a
            swipe or a tab tap settles in gently instead of hard-cutting. */
-        <div key={tab} className={`min-h-0 flex-1 ${transitionDirection === 'forward' ? 'tab-enter-forward' : 'tab-enter-backward'}`}>
+        <div key={tab} className={`min-h-0 flex-1 ${enterClass}`}>
           {loading && stories.length === 0 ? (
             <div className="flex h-full items-center justify-center text-muted">Loading…</div>
           ) : (
             <WatchFeed stories={stories} onShare={(s) => setShareStory(s)} onNeedMore={() => loadPage(page + 1, 'watch')} />
           )}
         </div>
-      ) : (
-        /* NEWS / FOLLOWING TABS */
-        <main key={tab} className={`px-4 ${transitionDirection === 'forward' ? 'tab-enter-forward' : 'tab-enter-backward'}`}>
-          {followingEmpty ? (
-            <div className="mt-20 text-center">
-              <p className="font-serif text-2xl font-semibold">Pick what you&rsquo;re into.</p>
-              <p className="mx-auto mt-3 max-w-xs text-sm text-muted">Choose the subjects and news outlets you care about. Everything they publish gathers here.</p>
-              <Link href="/profile" className="mt-6 inline-block rounded-md bg-ink px-5 py-2.5 text-sm font-medium text-paper">Choose topics &amp; sources</Link>
-            </div>
+      ) : tab === 'following' ? (
+        /* FOR YOU TAB — the same full-screen swipe as Watch, in daylight. */
+        <div key={tab} className={`min-h-0 flex-1 ${enterClass}`}>
+          {forYouPlaceholder ? (
+            <div className="flex h-full items-center justify-center">{forYouPlaceholder}</div>
           ) : (
-          <>
-          {/* The editor's opening line for this visit, ahead of even the
-              single pick below — meeting the reader at the top of the tab,
-              not another list item. */}
-          {tab === 'following' && greeting && <EditorGreeting greeting={greeting} />}
-
-          {/* The editor's single pick comes next — before the interests
-              summary line — since it's the one thing on this tab meant to
-              feel chosen rather than filtered. */}
-          {recommendation && expandedId !== recommendation.story.id && (
-            <div className="pt-6">
-              <TodaysRecommendation
-                story={recommendation.story}
-                reason={recommendation.reason}
-                showDemoTag={isDev}
-                onOpen={openStory}
-                onComment={() => setCommentStory(recommendation.story)}
-                onShare={(st) => setShareStory(st)}
-              />
-            </div>
+            <ForYouFeed
+              stories={stories}
+              greeting={greeting}
+              following={followingLabels}
+              reasonFor={reasonFor}
+              relatedFor={relatedFor}
+              showDemoTag={isDev}
+              onShare={(s) => setShareStory(s)}
+              onNeedMore={() => loadPage(page + 1, 'following')}
+            />
           )}
-
-          {tab === 'following' && (interests.length > 0 || followedSources.size > 0) && (
-            <p className="pt-3 text-[12px] text-muted">
-              Following: {[...interests.map(categoryLabel), ...Array.from(followedSources)].join(' · ')} · <Link href="/profile" className="underline">Edit</Link>
-            </p>
-          )}
-
+        </div>
+      ) : (
+        /* NEWS TAB */
+        <main key={tab} className={`px-4 ${enterClass}`}>
           {error && stories.length === 0 && (
             <div className="mt-16 text-center">
               <p className="font-serif text-xl font-semibold">The presses jammed.</p>
@@ -365,26 +381,19 @@ export default function Feed() {
           {!loading && !error && stories.length === 0 && (
             <div className="mt-16 text-center">
               <p className="font-serif text-xl font-semibold">Nothing here yet.</p>
-              <p className="mt-2 text-sm text-muted">{tab === 'following' ? 'Pick more topics or sources to fill this feed.' : 'No stories right now.'}</p>
-              {tab === 'following' && <Link href="/profile" className="mt-5 inline-block rounded-md bg-ink px-5 py-2.5 text-sm font-medium text-paper">Edit topics &amp; sources</Link>}
+              <p className="mt-2 text-sm text-muted">No stories right now.</p>
             </div>
           )}
 
           <div className="space-y-9 pt-6">
             {stories.map((s, i) => {
-              // Already shown above as the editor's pick — its collapsed
-              // card doesn't also render here, only its expanded view does,
-              // so opening it from the recommendation still works exactly
-              // like any other story, just without a second copy sitting in
-              // the ordinary list underneath.
-              if (recommendation?.story.id === s.id && expandedId !== s.id) return null;
               const isSnapPoint = s.id === expandedId || s.id === nextSnapId;
               return (
               <div key={s.id} id={`story-${s.id}`} className={`scroll-mt-28${isSnapPoint ? ' feed-snap-point' : ''}`}>
                 {expandedId === s.id ? (
                   <ArticleView story={s} related={relatedFor(s)} onClose={() => setExpandedId(null)} onOpen={openStory} onShare={(st) => setShareStory(st)} onComment={(st) => setCommentStory(st)} />
                 ) : (
-                  <StoryCard story={s} lead={i === 0} showDemoTag={isDev} reason={tab === 'following' ? reasonFor(s) : null} onOpen={openStory} onComment={() => setCommentStory(s)} onShare={(st) => setShareStory(st)} />
+                  <StoryCard story={s} lead={i === 0} showDemoTag={isDev} onOpen={openStory} onComment={() => setCommentStory(s)} onShare={(st) => setShareStory(st)} />
                 )}
               </div>
               );
@@ -404,8 +413,6 @@ export default function Feed() {
 
           <div ref={sentinelRef} className="h-px" />
           {mode === 'mock' && isDev && <p className="mt-10 pb-4 text-center text-[11px] text-muted">Development mode · demo content (no database/API connected)</p>}
-          </>
-          )}
         </main>
       )}
     </div>
