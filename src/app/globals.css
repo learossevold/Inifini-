@@ -13,18 +13,6 @@ html { scroll-behavior: smooth; }
    here; y is handled per-feed. */
 html, body { overscroll-behavior-x: none; }
 
-/* Fraunces (the serif, everywhere headlines and pull quotes use font-serif) is
-   a variable font whose default `font-optical-sizing: auto` ties its `opsz`
-   axis to the rendered font-size. At the sizes used throughout this app
-   (16-40px) that lands in Fraunces' low/"text" range, where its more
-   idiosyncratic curves — the double-loop g especially — read as uneven rather
-   than as character once a headline is big enough to actually look at closely.
-   Pinning a fixed, higher opsz moves every use of the typeface to its calmer
-   "display" cut regardless of size. Chosen by rendering the exact shipped font
-   file at a spread of values side by side: 72 was the clearest single point
-   that reads as calm serif at both body (16px) and headline (25-40px) sizes
-   without going as thin/mannered as the very top of the range (144). */
-.font-serif { font-variation-settings: 'opsz' 72; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 .rule-t { border-top: 1px solid theme('colors.rule'); }

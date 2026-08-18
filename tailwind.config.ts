@@ -18,7 +18,7 @@ const config: Config = {
         night: '#0B0C1D', // full-screen video / watch background
       },
       fontFamily: {
-        serif: ['var(--font-fraunces)', 'Georgia', 'serif'],
+        serif: ['var(--font-serif)', 'Georgia', 'serif'],
         sans: ['var(--font-inter)', 'system-ui', 'sans-serif'],
       },
       animation: {
