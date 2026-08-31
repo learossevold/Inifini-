@@ -1,6 +1,5 @@
 import Parser from 'rss-parser';
 import { RSS_SOURCES } from '@/config/sources';
-import { summarizeStory } from './summarize';
 import { upgradeImageUrl } from './images';
 import { supabaseAdmin } from './supabase';
 import { Category, Story } from './types';
@@ -10,12 +9,38 @@ import { Category, Story } from './types';
  * source attribution from public RSS feeds. We never scrape full articles,
  * and every story links back to the original publisher.
  *
- * Performance posture (Vercel Hobby has a hard 60s function limit):
- *  - All feeds are fetched in parallel (Promise.allSettled), each with its own
- *    timeout, so one slow feed can never stall the whole run.
- *  - Duplicate detection is a single batched query, not one query per article.
- *  - No image API calls (e.g. Unsplash) happen in the loop — we use the image
- *    embedded in the feed, or a static per-category fallback.
+ * Performance posture (Vercel Hobby has a hard 60s function limit, and its
+ * own Cron Jobs feature is capped at once a day — which is why an external
+ * scheduler like cron-job.org is what actually drives this):
+ *
+ *  Ingestion is two decoupled phases, not one:
+ *   1. runIngestion() (this file) — fetch every feed in parallel
+ *      (Promise.allSettled), each with its own timeout so one slow host can
+ *      never stall the run, dedupe with a single batched query, and insert
+ *      rows with status: 'pending'. No AI calls happen here, so this phase's
+ *      wall time is bounded by the slowest single feed fetch (worst case
+ *      ~12s) regardless of how many new articles showed up — it stays well
+ *      inside 60s whether it's the 20th run of the day or the very first
+ *      (cold-start) run against an empty table.
+ *   2. /api/ingest/summarize — a separate endpoint, on its own cron-job.org
+ *      schedule (every 1-5 minutes), that pulls a small batch of 'pending'
+ *      rows, calls the AI summarizer on just that batch, and flips them to
+ *      'published'. This is the same bounded-batch-plus-"remaining"-count
+ *      shape /api/ingest/narrate and /api/ingest/resummarize already use —
+ *      the summarization calls are what could plausibly run long or hit a
+ *      provider rate limit, and a small fixed batch keeps any single
+ *      invocation safely under the cap. It drains a burst of new pending
+ *      rows over a few ticks rather than trying to do it all in one call.
+ *
+ *  A 'pending' row is invisible to readers automatically: the app's read
+ *  queries (see getFeed in lib/stories.ts) and the anon RLS policy on
+ *  `stories` both already filter on status = 'published', so nothing extra
+ *  was needed to hide half-finished rows from the feed.
+ *
+ *  Unsplash image lookups stay in this phase (not moved to the summarize
+ *  batch): each is capped at 3s and run in parallel across candidates via
+ *  Promise.all, so the slowest one — not the count of them — sets the added
+ *  time, which stays small next to the AI calls this split was for.
  */
 
 // rss-parser item shape with the media extensions we ask for below.
@@ -133,7 +158,7 @@ const CATEGORY_IMAGES: Record<Category, string[]> = {
   ],
 };
 
-function slugify(t: string): string {
+export function slugify(t: string): string {
   return (
     t.toLowerCase().replace(/[^a-z0-9æøå]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 80) +
     '-' +
@@ -287,6 +312,9 @@ export interface IngestResult {
   inserted: number;
   duplicates: number;
   errors: { source: string; error: string }[];
+  // The engine configured to summarize the pending queue this run just
+  // added to — not what this run itself did, since summarization now
+  // happens in a separate batch (see /api/ingest/summarize).
   engine: string;
   mode: 'live' | 'no-database';
   ranAt: string;
@@ -296,7 +324,6 @@ export interface IngestResult {
 interface Candidate {
   sourceName: string;
   row: Partial<Story>;
-  summaryInput: Parameters<typeof summarizeStory>[0];
   needsImage: boolean; // true = no RSS image found, try Unsplash
 }
 
@@ -364,17 +391,12 @@ export async function runIngestion(maxPerSource = 8): Promise<IngestResult> {
         candidates.push({
           sourceName: source.name,
           needsImage: rssImage === null,
-          summaryInput: {
-            title: markedTitle,
-            excerpt,
-            source_name: source.name,
-            source_url: url,
-            category,
-            published_at: publishedAt,
-            language: source.language,
-          },
           row: {
-            // ai_title (English translation) will override this if the AI returns one
+            // ai_title (English translation) will override this once the
+            // summarize batch (see /api/ingest/summarize) picks this row up
+            // — the ai_* fields all stay at their DB default ('' / []) until
+            // then, and status: 'pending' keeps it out of every read query
+            // and out of the anon RLS policy until that happens.
             title: markedTitle,
             slug: slugify(rawTitle),
             original_url: url,
@@ -390,7 +412,7 @@ export async function runIngestion(maxPerSource = 8): Promise<IngestResult> {
             importance_score: importance,
             novelty_score: 80,
             relevance_score: source.region === 'no' ? 75 : 60,
-            status: 'published',
+            status: 'pending',
             is_demo: false,
           },
         });
@@ -426,28 +448,24 @@ export async function runIngestion(maxPerSource = 8): Promise<IngestResult> {
     return true;
   });
 
-  // ── 4. Summarize + Unsplash image lookup in parallel. ─────────────────────
+  // ── 4. Unsplash image lookup, for candidates with no RSS image. No AI
+  //        summarization here — that's /api/ingest/summarize's job, run
+  //        against the 'pending' rows this inserts, in its own small
+  //        batches. Each lookup is capped at 3s and all run in parallel, so
+  //        this step's cost is that one worst-case lookup, not the count of
+  //        them. ─────────────────────────────────────────────────────────
   const unsplashKey = process.env.UNSPLASH_ACCESS_KEY;
-  const [summaries, unsplashImages] = await Promise.all([
-    Promise.all(fresh.map((c) => summarizeStory(c.summaryInput))),
-    Promise.all(fresh.map((c) =>
-      c.needsImage && unsplashKey
-        ? unsplashImage(c.summaryInput.title, unsplashKey)
-        : Promise.resolve(null)
-    )),
-  ]);
+  const unsplashImages = await Promise.all(fresh.map((c) =>
+    c.needsImage && unsplashKey
+      ? unsplashImage(c.row.title!, unsplashKey)
+      : Promise.resolve(null)
+  ));
 
-  const rows = fresh.map((c, i) => {
-    const { ai_title, ...bundle } = summaries[i].bundle;
-    return {
-      ...c.row,
-      // Use Unsplash image if we got one, otherwise keep the Pexels fallback.
-      ...(unsplashImages[i] ? { image_url: unsplashImages[i] } : {}),
-      ...bundle,
-      // Use the AI-translated English title when available; otherwise keep the original.
-      ...(ai_title ? { title: ai_title, slug: slugify(ai_title) } : {}),
-    };
-  });
+  const rows = fresh.map((c, i) => ({
+    ...c.row,
+    // Use Unsplash image if we got one, otherwise keep the Pexels fallback.
+    ...(unsplashImages[i] ? { image_url: unsplashImages[i] } : {}),
+  }));
 
   // ── 5. One batched upsert. ignoreDuplicates guards against races without
   //        failing the whole batch on a single conflict. ──────────────────────

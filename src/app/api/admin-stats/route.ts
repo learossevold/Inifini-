@@ -23,6 +23,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       mode: 'mock',
       storyCount: MOCK_STORIES.length,
+      pendingCount: 0,
       sourceCount: RSS_SOURCES.length,
       lastIngestion: null,
       aiEngine,
@@ -37,6 +38,7 @@ export async function GET(req: NextRequest) {
   // Without this the page had no way to say what went wrong: a throw here
   // became an HTML 500 that the client could only report as "could not load".
   let storyCount: number | null | undefined;
+  let pendingCount: number | null | undefined;
   let sources: any[] | null;
   let recent: any[] | null;
   let waitlistRes: { count?: number | null };
@@ -47,10 +49,16 @@ export async function GET(req: NextRequest) {
     // actually predicts whether a visitor sees real news or the demo
     // fallback — a raw row count could stay non-zero and misleadingly say
     // "live" even if every one of those rows were stuck unpublished.
-    [{ count: storyCount }, { data: sources }, { data: recent }, waitlistRes] = await Promise.all([
+    //
+    // pendingCount is the other half of that picture: rows runIngestion()
+    // (lib/rss.ts) already inserted but /api/ingest/summarize hasn't reached
+    // yet. A number stuck here that never shrinks is the signal that the
+    // second cron-job.org job isn't actually running.
+    [{ count: storyCount }, { count: pendingCount }, { data: sources }, { data: recent }, waitlistRes] = await Promise.all([
       db.from('stories').select('*', { count: 'exact', head: true }).eq('status', 'published'),
+      db.from('stories').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
       db.from('sources').select('name, domain, active, last_status, last_fetched_at').order('name'),
-      db.from('stories').select('title, source_name, published_at, is_demo, fetched_at').order('fetched_at', { ascending: false }).limit(10),
+      db.from('stories').select('title, source_name, published_at, is_demo, fetched_at, status').order('fetched_at', { ascending: false }).limit(10),
       admin ? admin.from('waitlist').select('*', { count: 'exact', head: true }) : Promise.resolve({ count: 0 }),
     ]);
   } catch (e: any) {
@@ -68,6 +76,7 @@ export async function GET(req: NextRequest) {
     // now" — not just "is the database reachable".
     mode: (storyCount ?? 0) > 0 ? 'live' : 'mock',
     storyCount: storyCount ?? 0,
+    pendingCount: pendingCount ?? 0,
     sourceCount: sources?.length ?? RSS_SOURCES.length,
     lastIngestion,
     aiEngine,

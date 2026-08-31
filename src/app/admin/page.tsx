@@ -6,12 +6,13 @@ import { useCallback, useEffect, useState } from 'react';
 interface Stats {
   mode: string;
   storyCount: number;
+  pendingCount: number;
   sourceCount: number;
   lastIngestion: string | null;
   aiEngine: string;
   waitlistCount: number;
   sources: { name: string; domain: string; active: boolean; last_status: string | null; last_fetched_at: string | null }[];
-  recentStories: { title: string; source_name: string; published_at: string; is_demo: boolean }[];
+  recentStories: { title: string; source_name: string; published_at: string; is_demo: boolean; status: string }[];
 }
 
 /** How old a story is, so "are we importing today's news?" is answerable at a glance. */
@@ -37,6 +38,8 @@ export default function AdminPage() {
   const [narrateResult, setNarrateResult] = useState<string | null>(null);
   const [resumming, setResumming] = useState(false);
   const [resummarizeResult, setResummarizeResult] = useState<string | null>(null);
+  const [summarizing, setSummarizing] = useState(false);
+  const [summarizeResult, setSummarizeResult] = useState<string | null>(null);
   const [pushing, setPushing] = useState(false);
   const [pushResult, setPushResult] = useState<string | null>(null);
 
@@ -93,7 +96,7 @@ export default function AdminPage() {
       const data = await res.json();
       setIngestResult(
         res.ok
-          ? `Fetched ${data.fetched}, inserted ${data.inserted}, ${data.duplicates} duplicates skipped, ${data.errors.length} errors. Engine: ${data.engine}. Mode: ${data.mode}.`
+          ? `Fetched ${data.fetched}, queued ${data.inserted} as pending, ${data.duplicates} duplicates skipped, ${data.errors.length} errors. Run "Summarize pending" (or wait for its own cron) to turn them into published stories, using ${data.engine}. Mode: ${data.mode}.`
           : `Failed: ${data.error}`
       );
       await loadStats(password);
@@ -122,6 +125,30 @@ export default function AdminPage() {
       setResummarizeResult('Re-summarize request failed.');
     } finally {
       setResumming(false);
+    }
+  };
+
+  // Turns a batch of the 'pending' rows runIngestion() just queued into real,
+  // published stories. Same bounded-batch shape as triggerResummarize, and
+  // normally driven by its own cron-job.org schedule rather than this button
+  // — this is here for the same reason the others are: seeing it work
+  // without waiting for the next tick.
+  const triggerSummarize = async () => {
+    setSummarizing(true);
+    setSummarizeResult(null);
+    try {
+      const res = await fetch('/api/ingest/summarize', { method: 'POST', headers: { 'x-admin-password': password } });
+      const data = await res.json();
+      setSummarizeResult(
+        res.ok
+          ? data.message ?? `Published ${data.updated} of ${data.total}${data.failed ? `, ${data.failed} failed` : ''}. ${data.remaining > 0 ? `${data.remaining} still pending, run again.` : 'Queue drained.'}`
+          : `Failed: ${data.error}`
+      );
+      await loadStats(password);
+    } catch {
+      setSummarizeResult('Summarize request failed.');
+    } finally {
+      setSummarizing(false);
     }
   };
 
@@ -197,6 +224,7 @@ export default function AdminPage() {
           <div className="mt-6 grid grid-cols-2 gap-3">
             {[
               ['Stories', String(stats.storyCount)],
+              ['Pending summary', String(stats.pendingCount)],
               ['Sources', String(stats.sourceCount)],
               ['Last ingestion', stats.lastIngestion ? new Date(stats.lastIngestion).toLocaleString() : 'never'],
               ['AI engine', stats.aiEngine],
@@ -218,6 +246,15 @@ export default function AdminPage() {
             {ingesting ? 'Ingesting… (fetching feeds + generating summaries)' : 'Run ingestion now'}
           </button>
           {ingestResult && <p className="mt-3 rounded-md bg-accentSoft px-3 py-2">{ingestResult}</p>}
+
+          <button
+            onClick={triggerSummarize}
+            disabled={summarizing}
+            className="mt-3 w-full rounded-md border border-ink bg-white py-3 font-medium text-ink disabled:opacity-60"
+          >
+            {summarizing ? 'Summarizing…' : `Summarize pending${stats.pendingCount ? ` (${stats.pendingCount})` : ''}`}
+          </button>
+          {summarizeResult && <p className="mt-3 rounded-md bg-accentSoft px-3 py-2">{summarizeResult}</p>}
 
           <button
             onClick={triggerResummarize}
@@ -265,7 +302,7 @@ export default function AdminPage() {
               <div key={i} className="rounded-md border border-rule bg-white/60 px-4 py-2.5">
                 <p className="font-medium leading-snug">{s.title}</p>
                 <p className="text-[12px] text-muted">
-                  {s.source_name} · {new Date(s.published_at).toLocaleString()} · <span className={ageDays(s.published_at) > 3 ? 'font-semibold text-accent' : ''}>{ageLabel(s.published_at)}</span> {s.is_demo && '· DEMO'}
+                  {s.source_name} · {new Date(s.published_at).toLocaleString()} · <span className={ageDays(s.published_at) > 3 ? 'font-semibold text-accent' : ''}>{ageLabel(s.published_at)}</span> {s.is_demo && '· DEMO'} {s.status === 'pending' && '· PENDING SUMMARY'}
                 </p>
               </div>
             ))}

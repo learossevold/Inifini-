@@ -35,10 +35,11 @@ Copy `.env.example` to `.env.local` and fill in what you have:
 
 | Variable | Required? | Purpose |
 |---|---|---|
-| `ADMIN_PASSWORD` | for /admin in production | Protects `/admin` and `/api/ingest`. Open in dev if unset. |
+| `ADMIN_PASSWORD` | for /admin in production | Protects `/admin`, `/api/ingest` and `/api/ingest/summarize`. Open in dev if unset. |
 | `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | optional | Database + auth. Without them, the app runs on mock data. |
 | `SUPABASE_SERVICE_ROLE_KEY` | optional | Server-only write key for ingestion. |
-| `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` | optional | Real AI summaries. Checked Anthropic-first. |
+| `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` | optional | Real AI summaries, used by `/api/ingest/summarize`. Checked Anthropic-first. |
+| `CRON_SECRET` | recommended in production | Lets Vercel Cron's daily `/api/ingest` request (and, if you point cron-job.org at it too, `/api/ingest/summarize`) authenticate with a bearer token instead of `ADMIN_PASSWORD`. See §10 for why `/api/ingest/summarize` needs its own, more frequent external schedule. |
 | `OPENAI_API_KEY_TTS` | optional | Powers Watch-tab AI narration audio. Without it, Watch uses silent caption cards. Needs a Supabase Storage bucket, which `/api/ingest/narrate` creates automatically on first run. |
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_CONTACT_EMAIL` | optional | The daily morning-brief push notification. Generate a pair with `npx web-push generate-vapid-keys`. Without them the toggle stays hidden and nothing is sent. |
 
@@ -51,7 +52,12 @@ Copy `.env.example` to `.env.local` and fill in what you have:
 
 ## 6. Ingest real news
 
-With Supabase configured: open `/admin`, enter `ADMIN_PASSWORD`, click **Run ingestion now**. It pulls the RSS feeds in `src/config/sources.ts` (titles/excerpts/links only — never full articles, all credited and linked), dedupes, generates AI (or mock) summaries, scores them, and stores them. Edit that one file to add/remove sources.
+Ingestion is two steps, not one — this is what keeps it inside Vercel's function time limit (see §10 for why):
+
+1. **Fetch + queue.** With Supabase configured: open `/admin`, enter `ADMIN_PASSWORD`, click **Run ingestion now**. It pulls the RSS feeds in `src/config/sources.ts` (titles/excerpts/links only — never full articles, all credited and linked), dedupes, scores them, and stores them with `status: 'pending'`. Edit that one file to add/remove sources. This step does **not** call the AI — it's fast on purpose.
+2. **Summarize.** Click **Summarize pending** (same page) to turn a batch of those pending rows into real published stories with AI (or mock) summaries. A pending row is invisible to readers — it isn't in the feed and isn't reachable through the API — until this step publishes it.
+
+In production, both are meant to run on their own schedule rather than by hand — see §10.
 
 With `OPENAI_API_KEY_TTS` also set, click **Generate Watch narration** on the same page (or wait for its daily cron) to read the newest stories' summaries aloud for the Watch tab — a real voice over the story's own photo, never fabricated video.
 
@@ -90,13 +96,17 @@ Push to GitHub → import at vercel.com/new → add the environment variables un
 
 ## 10. Going live with REAL news (the important next step)
 
-Right now the feed shows realistic demo stories. To switch to live news from NRK, BBC, Guardian, E24, TechCrunch and Ars Technica:
+Right now the feed shows realistic demo stories. To switch to live news from BBC, Al Jazeera, Sky News, DW, The Guardian, TechCrunch and Ars Technica (edit `src/config/sources.ts` to add Norwegian or other outlets):
 
 1. **Create a Supabase project** (free) and run `supabase/schema.sql` in its SQL editor.
 2. Add the three Supabase keys + `ADMIN_PASSWORD` to your Vercel environment variables.
 3. (Optional but recommended) add `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` so summaries are real AI summaries instead of excerpt-based fallbacks.
-4. Open `/admin`, enter the password, click **Run ingestion now**. Real stories appear in the feed.
-5. **Keep it fresh automatically:** `vercel.json` already defines a daily cron hitting `/api/ingest` at 04:00 UTC (≈06:00 Norwegian time) — Vercel picks this up automatically on deploy, no dashboard clicking needed. For it to authenticate, add a `CRON_SECRET` environment variable in Vercel (any random string) — Vercel then signs its cron requests with it automatically and `/api/ingest` checks it. Want it more often than daily? Upgrade to Vercel Pro and tighten the `schedule` in `vercel.json`, or use an external scheduler like cron-job.org sending the `x-admin-password` header on the Hobby plan.
+4. Open `/admin`, enter the password, click **Run ingestion now**, then **Summarize pending**. Real stories appear in the feed.
+5. **Keep it fresh automatically, on two schedules:**
+   - `vercel.json` already defines a daily cron hitting `/api/ingest` at 04:00 UTC (≈06:00 Norwegian time) — Vercel picks this up automatically on deploy, no dashboard clicking needed.
+   - `/api/ingest/summarize` needs its **own, more frequent** trigger — every 1–5 minutes is plenty — to drain whatever `/api/ingest` just queued. Vercel's own Cron Jobs can't do that on the Hobby plan (capped at once a day), so use an external scheduler: [cron-job.org](https://cron-job.org) (free) hitting `https://<your-domain>/api/ingest/summarize` every few minutes with the `x-admin-password` header set to your `ADMIN_PASSWORD`. Point a second cron-job.org job at `/api/ingest` too if you'd rather not rely on Vercel's daily one, or want it more often.
+   - Either way, add a `CRON_SECRET` environment variable in Vercel (any random string) so Vercel Cron's own request to `/api/ingest` authenticates automatically (it signs its requests with this as a bearer token) — `/api/ingest/summarize` accepts the same bearer token too, if you'd rather use `CRON_SECRET` than `ADMIN_PASSWORD` for cron-job.org's requests.
+6. **Why two steps at all:** `/api/ingest` only fetches feeds and inserts rows — no AI calls — so it finishes in a few seconds even on a completely empty database. All the AI summarization (the part that can run long, or hit a provider rate limit under a burst of new articles) happens in small, bounded batches in `/api/ingest/summarize` instead, each one safely inside the 60-second Hobby limit regardless of how many new articles just came in. A `pending` row is invisible to readers (feed queries and the anon RLS policy both filter on `status = 'published'`) until summarization publishes it, so nothing half-finished is ever shown.
 
 That's the whole path from demo to a live, self-updating news app.
 

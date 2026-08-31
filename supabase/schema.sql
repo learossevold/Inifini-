@@ -71,6 +71,9 @@ alter table stories add column if not exists audio_duration_seconds int;
 create index if not exists stories_published_at_idx on stories (published_at desc);
 create index if not exists stories_category_idx on stories (category);
 create unique index if not exists stories_slug_idx on stories (slug);
+-- Backs /api/ingest/summarize's "select the oldest pending rows" query and
+-- its pending-count, and every getFeed()/RLS check filtering status = 'published'.
+create index if not exists stories_status_idx on stories (status);
 
 -- ---------- PROFILES (extends auth.users) ----------
 create table if not exists profiles (
