@@ -112,16 +112,73 @@ That's the whole path from demo to a live, self-updating news app.
 
 ## 11. Getting onto the App Store
 
-Inifini is a web app, so there are two realistic routes:
+### The decision: Capacitor, wrapping the live site — not a rewrite
 
-**A) Ship as a PWA first (days, ~free).** Add a web app manifest and icons so users can "Add to Home Screen" on iPhone — it then opens full-screen like an app, no App Store needed. This is the fastest way to get it onto phones and is the right first step while you test with friends.
+Three real options, and why the choice landed where it did:
 
-**B) Wrap it for the real App Store (weeks, costs money).** To appear in Apple's App Store you need:
-- An **Apple Developer account** ($99/year).
-- A **native wrapper** around the web app — the common tools are **Capacitor** (recommended for a Next.js app) or a service like **PWABuilder**. This packages the site as an installable iOS app.
-- A **Mac with Xcode** to build and submit (or a cloud build service).
-- App Store assets: icon, screenshots, privacy policy, description, age rating.
-- To pass **Apple review**, which is stricter for news/social apps: you'll likely need real accounts, a way to **report/block** content and users (the comment word-filter + hide is a start, but Apple usually wants block-user and report-to-moderator flows), and clear sourcing/attribution (already built in).
+| | Time to a submittable build | What it costs you | Ongoing maintenance |
+|---|---|---|---|
+| **PWA only** (already done — see §11a) | Already there | Nothing | Nothing |
+| **Capacitor** (recommended) | Hours of setup, then the usual Apple process (see below) | Nothing rewritten; `/api/*`, `force-dynamic` routes, Supabase magic-link auth all keep working exactly as they do today | One `git push` to `main` ships to the app too — a new native build is only needed for a native-side change (an icon, a plugin), not ordinary content/feature work |
+| **React Native migration** | Weeks to months | Every custom piece of UI in this app rewritten from scratch — the swipe-snap feed, the boundary-swipe-out-of-an-article handoff, Ken Burns, all of it, since none of it is DOM/CSS in RN's world | Two codebases forever, unless you also take on React Native Web's own tooling cost to share one |
 
-**Honest recommendation:** do **A** now — get it on friends' home screens as a PWA and see if they actually open it every morning. Only invest in **B** once you have real usage proving people want it. The App Store is a distribution step, not a validation step.
+PWA alone doesn't reach the stated goal at all — an iOS PWA isn't distributed through the App Store, doesn't show up in App Store search, and can't be found by anyone not already told to "Add to Home Screen." It's real progress (already done, see §11a) and the right way to validate with friends first, but it's a different distribution channel, not a step on the way to this one.
+
+React Native is disproportionate for where this app is: pre-launch, not yet validated with real users, and its whole present value is a specific, heavily-tuned custom feed UI that a rewrite would throw away and rebuild from zero.
+
+**Capacitor, configured to load the live Vercel deployment as a remote URL** (not `next export`'s static bundle) is what's actually set up now — see §11b. This is the standard, proportionate path for an existing, working web app to reach the App Store without a rewrite.
+
+### 11a. PWA status: already done
+
+`public/manifest.json`, all four icon sizes, and `apple-touch-icon.png` already exist and are wired up in `src/app/layout.tsx`. "Add to Home Screen" on iOS already gives a full-screen, app-like launch today — nothing left to do here. Worth using in the meantime regardless of the App Store timeline: it's the cheapest way to get real daily usage signal from friends before spending a review cycle on Apple.
+
+### 11b. What's set up already
+
+- `capacitor.config.ts` — the whole wrapper's configuration. Loads the app from `server.url` (a **placeholder** right now — see below), with `server.errorPath` pointed at a small local page (`capacitor-shell/index.html`) that Capacitor shows in place of a native WebView error page specifically when that URL can't be reached at all (no connection, DNS failure, the server down) — confirmed against `@capacitor/ios`'s own source (`WebViewDelegationHandler.swift`) rather than assumed, since it's easy to get this kind of Capacitor behavior wrong by guessing.
+- `@capacitor/core`, `@capacitor/ios`, `@capacitor/app`, `@capacitor/splash-screen`, `@capacitor/status-bar` — installed.
+- `src/lib/nativeStatusBar.ts` — switches the iOS status bar's icon color between the two feeds' backgrounds (dark icons over News/For You's paper background, light icons over Watch's night background), called from `Feed.tsx` on every tab switch. Guarded by `Capacitor.isNativePlatform()`, so it's a safe no-op on the plain website — `@capacitor/status-bar` has no web implementation at all and throws if called without that guard, confirmed against `@capacitor/core`'s `registerPlugin` source before wiring this in, not assumed.
+- `npm run cap:add:ios` / `cap:sync` / `cap:open:ios` — added, but **only run on a Mac with Xcode installed** (see §11c — this session's environment is Linux and cannot run any of them, so none have been run yet).
+
+**Two placeholders you must fill in before this builds for real**, both marked `PLACEHOLDER` in the files:
+1. `capacitor.config.ts`'s `appId` (`com.indrearne.inifini` right now) — must exactly match the Bundle ID you register in the Apple Developer portal.
+2. `capacitor.config.ts`'s `server.url`, **and** the matching `PRODUCTION_URL` constant in `capacitor-shell/index.html` (kept as a separate value on purpose — that page is static and has no access to the config file at runtime) — both need Inifini's real production domain. Get this wrong and the result is a blank or broken app on a real device, not a build error, so it's easy to miss until you're holding a phone.
+
+### 11c. What you have to do yourself, on a Mac
+
+None of this is possible from this session — iOS code signing and Xcode builds require a real Mac, regardless of what generated the project.
+
+1. **Enroll in the Apple Developer Program** ($99/year) if you haven't. Individual enrollment can take a day or two to clear; organization enrollment (needs a D-U-N-S number) longer.
+2. Fill in the two placeholders above.
+3. `npm install`, then `npm run cap:add:ios` — generates the `ios/` Xcode project. Run once; after this, `npm run cap:sync` is what picks up future config/plugin changes.
+4. In the **Apple Developer portal** (Certificates, IDs & Profiles → Identifiers): register an App ID matching `capacitor.config.ts`'s `appId` exactly.
+5. In **Xcode** (`npm run cap:open:ios` opens `ios/App/App.xcworkspace` — always the `.xcworkspace`, never the `.xcodeproj`, since CocoaPods is involved):
+   - Signing & Capabilities tab → select your Team → check "Automatically manage signing." Xcode then creates the provisioning profile itself; there's no manual profile-wrangling needed for a solo submission.
+   - App icon: `npx @capacitor/assets generate --ios` generates the full icon set Xcode needs from a single source image — put `public/icon-1024.png` at `resources/icon.png` first (it's already the right size, 1024×1024, and already has no alpha channel, which the App Store icon specifically requires and a lot of source icons get wrong).
+   - Splash screen: same `@capacitor/assets` command generates it from a `resources/splash.png` (recommended 2732×2732) — a simple paper-background-plus-logo image matching `src/components/Splash.tsx`'s own look is the obvious choice.
+   - General tab: set supported orientation to **portrait only** — matches the app's actual design (`max-w-md`, phone-width layout throughout) and simplifies both this step and the App Store screenshot requirements below. Mark the app **iPhone only** (not iPad) for the same reason, unless you want to design and test a tablet layout first.
+6. Test on a real device or the Simulator: `npx cap run ios`, or Xcode's own Run button.
+7. **TestFlight first, App Store second.** Product → Archive in Xcode, then Distribute App → App Store Connect. This uploads a build you can immediately put in front of a small group of testers over TestFlight, before it's ever public — the natural next step after the friends-testing-the-PWA phase §11a's recommendation already pointed at.
+8. Once ready, submit the same build for App Store review from App Store Connect.
+
+### 11d. App Store requirements checklist
+
+| Requirement | Status |
+|---|---|
+| **Privacy policy URL** | Exists (`src/app/privacy/page.tsx`) — App Store Connect needs the live URL once the production domain is set. |
+| **App description, keywords, support URL** | Not written yet. |
+| **Screenshots** | Not made yet. iPhone 6.7" (e.g. 1290×2796) is the one Apple currently requires at minimum; skip iPad sizes entirely if the app is marked iPhone-only per §11c step 5. |
+| **Age rating questionnaire** | Not filled in yet — Apple's own form in App Store Connect (covers UGC, news content, etc.); nothing to build for it. |
+| **App Privacy "nutrition label"** | Not filled in yet — the App Store Connect form disclosing what's collected (account email, reading history, comments, friend/message data per `supabase/schema.sql`) and how it's used; should mirror what `src/app/privacy/page.tsx` already states in prose. |
+| **Category / pricing** | Straightforward once you're in App Store Connect — News, presumably free. |
+
+### 11e. Guideline 4.2 ("Minimum Functionality") — the real risk for this kind of app
+
+Apple explicitly rejects apps that are "simply a website wrapped in a WebView" with no native experience of their own — the single biggest review risk for exactly this setup. Where this app already stands:
+
+**Already helps:** the UI itself doesn't read as a browser tab — a native-style bottom tab bar, full-screen swipe feeds (Watch, For You), native-feeling sheets for comments and sharing, none of it chrome-heavy or obviously "a website." The status bar and splash screen integration from §11b are genuine (if small) native touches, not just cosmetic — real API calls, not css.
+
+**Worth adding before submitting, highest-leverage first:**
+- **Native push notifications.** The morning-brief push already exists (`NEXT_PUBLIC_VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`, §4) via web-push/VAPID, but that path is unreliable inside a Capacitor WebView on iOS the way it is in Safari. `@capacitor/push-notifications` (APNs-based) is the natural replacement, and reviewers specifically look favorably on real native capability use — this is likely the single highest-leverage addition for review risk, and isn't done yet.
+- **A real report mechanism for comments.** What exists today: a submit-time banned-word filter, and a personal "Hide" on any comment (client-side only, not sent anywhere — see `src/components/Comments.tsx`). What's missing: any way for a reader to report a comment *to the developer*, and any moderation queue in `/admin` to act on one. Blocking a *person* is already fully built (`blockUser`, wired up from the inbox) — it's specifically reporting *content* that isn't. Apple's Guideline 1.2 for user-generated content expects both a report mechanism and evidence you can act on reports quickly; this is a gap worth closing before submitting a social app, not just an App Store nicety.
+- **Offline handling.** §11b's `server.errorPath` page covers the total-failure case (no connection at all) with a real retry, not a native browser error screen — done. A brief network *hiccup* mid-session (not a full failure) still surfaces however the web app itself already handles a failed fetch (see the existing "The presses jammed" retry state in `Feed.tsx`) — already reasonable, not a gap.
 

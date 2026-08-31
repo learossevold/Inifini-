@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<!--
+  Not the app, and not a loading splash — see capacitor.config.ts's webDir
+  and server.errorPath comments for what this actually is and how that was
+  confirmed against @capacitor/ios's own source: Capacitor's fallback for
+  the one case server.url couldn't be reached at all (no connection, DNS
+  failure, the server being down), shown in place of a native WKWebView
+  error page that would otherwise read as "this app is broken" rather than
+  "you're offline."
+
+  No fonts, no build step, nothing fetched: everything it needs is inline or
+  in this same folder, so it always has something correct to show even with
+  zero network connectivity — the one situation this page exists for.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+<title>Inifini</title>
+<style>
+  html, body {
+    height: 100%;
+    margin: 0;
+    background: #FCFCFD; /* paper — matches capacitor.config.ts's ios.backgroundColor */
+    color: #14152D; /* ink */
+    font-family: -apple-system, system-ui, sans-serif;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 32px;
+    box-sizing: border-box;
+  }
+  img { width: 64px; height: 64px; border-radius: 16px; margin-bottom: 20px; }
+  h1 { font-size: 19px; font-weight: 600; margin: 0 0 8px; }
+  p { font-size: 14px; line-height: 1.5; color: #676B78; margin: 0 0 24px; max-width: 280px; }
+  button {
+    font: inherit;
+    font-size: 15px;
+    font-weight: 600;
+    color: #FCFCFD;
+    background: #14152D;
+    border: none;
+    border-radius: 10px;
+    padding: 12px 28px;
+    -webkit-tap-highlight-color: transparent;
+  }
+  button:active { opacity: 0.85; }
+  #status { margin-top: 14px; font-size: 12px; color: #676B78; min-height: 16px; }
+</style>
+</head>
+<body>
+  <img src="icon-512.png" alt="" />
+  <h1>Couldn&rsquo;t connect</h1>
+  <p>Inifini needs an internet connection. Check yours, then try again.</p>
+  <button id="retry">Try again</button>
+  <p id="status"></p>
+
+<script>
+  // This page is loaded through Capacitor's local scheme (see
+  // capacitor.config.ts's server.errorPath comment), not server.url's real
+  // origin — so a relative reload or "/" would just resolve back to this
+  // same local page, not actually retry the remote app. Has to be the
+  // production URL, in full, hardcoded here since this static file has no
+  // access to capacitor.config.ts's value at runtime.
+  //
+  // KEEP THIS IN SYNC with capacitor.config.ts's server.url — same
+  // placeholder, same reason it needs to change before this ships.
+  var PRODUCTION_URL = 'https://your-production-domain.example';
+
+  var status = document.getElementById('status');
+  document.getElementById('retry').addEventListener('click', function () {
+    status.textContent = 'Retrying…';
+    window.location.href = PRODUCTION_URL;
+  });
+
+  // Retry automatically the moment the OS reports connectivity back, so a
+  // reader who unlocks their phone back on wifi doesn't have to tap anything.
+  window.addEventListener('online', function () {
+    window.location.href = PRODUCTION_URL;
+  });
+</script>
+</body>
+</html>

@@ -7,6 +7,7 @@ import { EditorProfile, explainRecommendation } from '@/lib/affinity';
 import { buildGreeting, Greeting } from '@/lib/greeting';
 import { useSession } from '@/lib/session';
 import { supabaseBrowser } from '@/lib/supabase';
+import { setNativeStatusBarStyle } from '@/lib/nativeStatusBar';
 import StoryCard from './StoryCard';
 import ArticleView from './ArticleView';
 import WatchFeed from './WatchFeed';
@@ -134,6 +135,14 @@ export default function Feed() {
     document.documentElement.classList.add('fullscreen-lock');
     return () => document.documentElement.classList.remove('fullscreen-lock');
   }, [fullScreen]);
+
+  // Inside the native iOS wrapper only (see lib/nativeStatusBar.ts) — Watch
+  // is the one tab with a dark, full-screen background, so its status bar
+  // icons need to switch to light along with it; everywhere else stays dark
+  // icons over the paper background.
+  useEffect(() => {
+    setNativeStatusBarStyle(tab === 'watch' ? 'light' : 'dark');
+  }, [tab]);
 
   // News snaps to the next story only while an article is open — see
   // .feed-snap in globals.css for why this is `proximity`, not the full-screen
