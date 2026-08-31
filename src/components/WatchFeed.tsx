@@ -122,9 +122,16 @@ function WatchCard({
       ) : showImage ? (
         <div className="absolute inset-0">
           {/* Blurred, over-scaled copy fills the frame behind the photo, so a
-              landscape image never leaves bars on a full-screen portrait card. */}
+              landscape image never leaves bars on a full-screen portrait card.
+              Same onError as the sharp copy below it: same src, so in
+              practice both fail together, but only wiring one up meant a
+              request that failed for this copy alone (a real possibility —
+              two separate requests for the same URL aren't guaranteed to
+              succeed or fail together) left a broken image sitting behind
+              the sharp one with nothing catching it. */}
           <Image src={story.image_url!} alt="" fill sizes="100vw" aria-hidden
-            className="scale-125 object-cover blur-2xl brightness-50" unoptimized />
+            className="scale-125 object-cover blur-2xl brightness-50"
+            onError={() => setImgFailed(true)} unoptimized />
           <Image src={story.image_url!} alt="" fill sizes="100vw"
             /* The animation class is applied always, never toggled. Adding it
                used to snap the image straight from scale(1) to the keyframe's
@@ -164,8 +171,18 @@ function WatchCard({
         </button>
       )}
 
-      {/* Headline + animated captions */}
-      <div className="absolute inset-x-0 bottom-0 p-5 pb-8">
+      {/* Headline + animated captions. pr-16, not the p-5 all sides this used
+          to have — the vertical like/comment/save/share column (rendered by
+          the caller, absolutely positioned at bottom-32 right-3, see
+          WatchFeed below) sits over this same corner, and a headline or
+          caption long enough to wrap was landing its last word or two
+          directly under those icons with nothing here aware they existed.
+          Confirmed on real mock headlines at 375px width — a 2-line
+          headline already touched the save icon, a 3-line one ran straight
+          through the comment icon. 64px clears the icon column's own
+          right-3-plus-22px-wide box with room to spare, on every line, not
+          just the ones a particular headline happens to wrap short. */}
+      <div className="absolute inset-x-0 bottom-0 py-5 pb-8 pl-5 pr-16">
         {/* Sized down from 26px so the caption underneath — the actual pitch
             for tapping through — doesn't read as an afterthought next to it. */}
         <h2 className="font-serif text-[22px] font-bold leading-[1.12]">{story.title}</h2>
