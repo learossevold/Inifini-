@@ -28,11 +28,9 @@ import type { CapacitorConfig } from '@capacitor/cli';
  * screen's job instead (see the SplashScreen plugin config below). See
  * capacitor-shell/index.html for what the error page actually does.
  *
- * REQUIRED before this can build for real, both marked below:
- *  1. `appId` — must match the Bundle ID you register for this app in the
- *     Apple Developer portal. The value here is a placeholder.
- *  2. `server.url` — must be Inifini's real production domain. The value
- *     here is a placeholder pointed at nothing.
+ * REQUIRED before this can build for real: `appId` below, still a
+ * placeholder — must match the Bundle ID you register for this app in the
+ * Apple Developer portal. `server.url` is filled in already.
  */
 const config: CapacitorConfig = {
   // PLACEHOLDER — replace with the Bundle ID you register in the Apple
@@ -42,11 +40,9 @@ const config: CapacitorConfig = {
   appName: 'Inifini',
   webDir: 'capacitor-shell',
   server: {
-    // PLACEHOLDER — replace with the real production URL (the domain the
-    // Vercel deployment actually serves from). Everything the app does reads
-    // from here at runtime; getting this wrong means a blank or broken app,
-    // not a build error, so it is easy to miss until you're holding a phone.
-    url: 'https://your-production-domain.example',
+    // Inifini's real production domain (confirmed with the user directly —
+    // not guessed). Everything the app does reads from here at runtime.
+    url: 'https://inifini-uj2c.vercel.app',
     // HTTPS only — Apple's App Transport Security blocks plain HTTP by
     // default anyway, and there's no reason to weaken that here.
     cleartext: false,

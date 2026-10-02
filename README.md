@@ -139,9 +139,7 @@ React Native is disproportionate for where this app is: pre-launch, not yet vali
 - `src/lib/nativeStatusBar.ts` — switches the iOS status bar's icon color between the two feeds' backgrounds (dark icons over News/For You's paper background, light icons over Watch's night background), called from `Feed.tsx` on every tab switch. Guarded by `Capacitor.isNativePlatform()`, so it's a safe no-op on the plain website — `@capacitor/status-bar` has no web implementation at all and throws if called without that guard, confirmed against `@capacitor/core`'s `registerPlugin` source before wiring this in, not assumed.
 - `npm run cap:add:ios` / `cap:sync` / `cap:open:ios` — added, but **only run on a Mac with Xcode installed** (see §11c — this session's environment is Linux and cannot run any of them, so none have been run yet).
 
-**Two placeholders you must fill in before this builds for real**, both marked `PLACEHOLDER` in the files:
-1. `capacitor.config.ts`'s `appId` (`com.indrearne.inifini` right now) — must exactly match the Bundle ID you register in the Apple Developer portal.
-2. `capacitor.config.ts`'s `server.url`, **and** the matching `PRODUCTION_URL` constant in `capacitor-shell/index.html` (kept as a separate value on purpose — that page is static and has no access to the config file at runtime) — both need Inifini's real production domain. Get this wrong and the result is a blank or broken app on a real device, not a build error, so it's easy to miss until you're holding a phone.
+**One placeholder left to fill in before this builds for real**, marked `PLACEHOLDER` in the file: `capacitor.config.ts`'s `appId` (`com.indrearne.inifini` right now) — must exactly match the Bundle ID you register in the Apple Developer portal. `server.url` (and the matching `PRODUCTION_URL` constant in `capacitor-shell/index.html` — kept as a separate value on purpose, since that page is static and has no access to the config file at runtime) is already set to the real production domain, `https://inifini-uj2c.vercel.app`.
 
 ### 11c. What you have to do yourself, on a Mac
 
